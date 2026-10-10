@@ -587,6 +587,35 @@
       border-radius: 10px;
       resize: vertical;
     }
+
+    /* ===== 컴팩트 UI: 글자·버튼은 작게, 바둑판 영역은 크게 ===== */
+    html { background: #0f172a; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; } /* body가 fixed라 배경이 사라지는 문제 방지 */
+    body { padding: 4px 8px calc(6px + env(safe-area-inset-bottom)); }
+    header { padding: 0 2px 3px; }
+    .brand { font-size: 1rem; gap: 6px; white-space: nowrap; }
+    .brand svg { width: 20px; height: 20px; }
+    .header-actions { gap: 6px; }
+    .icon-btn { width: 32px; height: 32px; border-radius: 9px; }
+    .icon-btn svg { width: 16px; height: 16px; }
+    .info-bar { padding: 4px 10px; margin-bottom: 3px; border-radius: 10px; }
+    .player-badge { gap: 8px; }
+    .stone-icon { width: 20px; height: 20px; }
+    .player-role { font-size: 0.62rem; }
+    .player-turn { font-size: 0.8rem; gap: 5px; }
+    .rule-tag { font-size: 0.56rem; padding: 2px 6px; }
+    .bet-tag { font-size: 0.68rem; padding: 3px 8px; }
+    .bet-tag svg { width: 12px; height: 12px; }
+    .board-scroll-area { margin: 2px 0; }
+    .turn-indicator { font-size: 0.68rem; margin-top: 2px; }
+    .actions-bar { margin-top: 4px; gap: 6px; }
+    .actions-bar .btn { padding: 7px 10px; font-size: 0.78rem; border-radius: 10px; gap: 6px; }
+    .actions-bar .btn svg { width: 14px; height: 14px; }
+    .ad-banner-container { margin-top: 4px; }
+    .ad-banner-link { padding: 6px 10px; border-radius: 10px; }
+    .ad-content { font-size: 0.7rem; }
+    .ad-badge { font-size: 0.56rem; }
+    .coupang-notice { font-size: 0.54rem; line-height: 1.2; }
+    .zoom-btn { width: 34px; height: 34px; font-size: 1rem; }
   </style>
 </head>
 <body>
