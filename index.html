@@ -59,8 +59,12 @@
       align-items: center;
       justify-content: space-between;
       padding: 6px 10px calc(8px + env(safe-area-inset-bottom));
-      overflow: hidden; /* No page vertical scroll! UI is 100% locked on screen */
-      position: relative;
+      overflow: hidden; /* UI는 화면에 고정 */
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      touch-action: pan-x pan-y; /* 페이지 자체 핀치 확대 방지 (확대는 바둑판 안에서만) */
+      overscroll-behavior: none;
     }
 
     /* Toast Notification */
@@ -250,55 +254,64 @@
       flex-shrink: 0;
     }
 
-    /* Board Container */
-    /* Board Scroll Area (125% Square Board with 2D Pan: X and Y Scroll) */
+    /* Board Viewport: 화면(UI)은 고정, 바둑판 영역 안에서만 확대/이동 */
     .board-scroll-area {
       flex: 1;
       min-height: 0;
       width: 100%;
       max-width: 440px;
-      overflow-x: auto;
-      overflow-y: auto; /* Both X and Y scrolling enabled! */
-      -webkit-overflow-scrolling: touch;
+      overflow: hidden;
+      position: relative;
       border-radius: 16px;
-      touch-action: pan-x pan-y;
+      touch-action: none;
       box-shadow: var(--board-shadow);
       border: 3px solid #b88655;
       margin: 4px 0;
-      scrollbar-width: none;
-      
-    }
-
-    .board-scroll-area {
-      scrollbar-width: none !important; /* Hide scrollbar on Firefox */
-      -ms-overflow-style: none !important; /* Hide on IE/Edge */
-    }
-    .board-scroll-area::-webkit-scrollbar {
-      display: none !important; /* Hide on Chrome/Safari/KakaoTalk/Samsung */
-      width: 0 !important;
-      height: 0 !important;
+      background: #c9955a;
     }
 
     .board-container {
-      position: relative;
-      width: 140%;
-      min-width: 140%;
-      aspect-ratio: 1 / 1; /* 100% Perfect Square! */
-      background: var(--board-bg);
-      padding: 6px;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .zoom-btns {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 5;
+    }
+
+    .zoom-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(15, 23, 42, 0.72);
+      color: #fff;
+      font-size: 1.2rem;
+      font-weight: 800;
       display: flex;
       align-items: center;
       justify-content: center;
-      touch-action: pan-x pan-y;
+      touch-action: manipulation;
+      cursor: pointer;
     }
+
+    .zoom-btn:active { transform: scale(0.92); }
 
     canvas {
       width: 100%;
       height: 100%;
       display: block;
       cursor: pointer;
-      border-radius: 8px;
-      touch-action: pan-x pan-y;
+      touch-action: none;
     }
 
     /* Turn Indicator */
@@ -625,6 +638,11 @@
   <div class="board-scroll-area" id="boardScrollArea">
     <div class="board-container" id="boardContainer">
       <canvas id="omokCanvas" width="700" height="700"></canvas>
+    </div>
+    <div class="zoom-btns">
+      <button class="zoom-btn" id="btnZoomIn" title="확대">＋</button>
+      <button class="zoom-btn" id="btnZoomOut" title="축소">－</button>
+      <button class="zoom-btn" id="btnFocusLast" title="마지막 수로 이동">◎</button>
     </div>
   </div>
 
@@ -1002,37 +1020,89 @@
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
 
-        let margin = 0;
-    let cellSize = 0;
+    // ----------------------------------------------------
+    // 카메라(확대/이동) : 화면 UI는 고정, 바둑판 영역 안에서만 확대·이동
+    // ----------------------------------------------------
+    let viewW = 0, viewH = 0;
+    let cellSize = 40;
+    let camR = (BOARD_SIZE - 1) / 2, camC = (BOARD_SIZE - 1) / 2; // 화면 중앙에 오는 바둑판 좌표(칸 단위)
+    let offX = 0, offY = 0;
+    let userZoomed = false;
+    let camAnim = null;
+
+    const minCell = () => viewW / (BOARD_SIZE + 0.5);   // 판 전체가 한눈에 들어오는 크기
+    const maxCell = () => viewW / 5.2;                  // 최대 확대
+    const defaultCell = () => Math.min(maxCell(), Math.max(minCell(), viewW / 10.5)); // 기본: 가로 약 10칸
+    const clampCell = (v) => Math.min(maxCell(), Math.max(minCell(), v));
+
+    function clampCam() {
+      camC = Math.min(BOARD_SIZE - 1, Math.max(0, camC));
+      camR = Math.min(BOARD_SIZE - 1, Math.max(0, camR));
+    }
+
+    function updateOffsets() {
+      offX = viewW / 2 - camC * cellSize;
+      offY = viewH / 2 - camR * cellSize;
+    }
 
     function resizeCanvas() {
-      const rect = canvas.getBoundingClientRect();
-      const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
-      const size = rect.width > 0 ? rect.width : (parentWidth > 0 ? parentWidth : 450);
-
-      canvas.width = size * dpr;
-      canvas.height = size * dpr;
-      ctx.scale(dpr, dpr);
-
-      margin = size * 0.052;
-      cellSize = (size - margin * 2) / (BOARD_SIZE - 1);
+      const area = document.getElementById('boardScrollArea');
+      if (!area) return;
+      const w = area.clientWidth, h = area.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      const first = viewW === 0;
+      viewW = w; viewH = h;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cellSize = (first || !userZoomed) ? defaultCell() : clampCell(cellSize);
+      clampCam();
+      updateOffsets();
       drawBoard();
     }
 
-    function centerBoardScroll() {
-      const scrollArea = document.getElementById('boardScrollArea');
-      const container = document.getElementById('boardContainer');
-      if (scrollArea && container) {
-        // Center both Horizontally and Vertically (Tengen / Center focus)
-        scrollArea.scrollLeft = (container.scrollWidth - scrollArea.clientWidth) / 2;
-        scrollArea.scrollTop = (container.scrollHeight - scrollArea.clientHeight) / 2;
+    // 지정한 칸이 화면 중앙에 오도록 부드럽게 이동
+    function focusOn(r, c, animate = true) {
+      cancelAnimationFrame(camAnim);
+      if (!animate || viewW === 0) {
+        camR = r; camC = c; clampCam(); updateOffsets(); drawBoard();
+        return;
       }
+      const sr = camR, sc = camC, t0 = performance.now(), dur = 260;
+      const step = (now) => {
+        const t = Math.min(1, (now - t0) / dur);
+        const e = 1 - Math.pow(1 - t, 3);
+        camR = sr + (r - sr) * e;
+        camC = sc + (c - sc) * e;
+        clampCam(); updateOffsets(); drawBoard();
+        if (t < 1) camAnim = requestAnimationFrame(step);
+      };
+      camAnim = requestAnimationFrame(step);
     }
 
-    window.addEventListener('resize', () => { resizeCanvas(); centerBoardScroll(); });
-    window.addEventListener('orientationchange', () => { resizeCanvas(); centerBoardScroll(); });
-    window.addEventListener('DOMContentLoaded', () => { resizeCanvas(); centerBoardScroll(); });
-    window.addEventListener('load', () => { resizeCanvas(); centerBoardScroll(); });
+    function zoomBy(factor, ax, ay) {
+      // (ax, ay): 화면 좌표(캔버스 기준) - 이 점이 고정되도록 확대. 없으면 화면 중앙 기준
+      userZoomed = true;
+      const nx = ax === undefined ? viewW / 2 : ax;
+      const ny = ay === undefined ? viewH / 2 : ay;
+      const anchorC = (nx - offX) / cellSize, anchorR = (ny - offY) / cellSize;
+      cellSize = clampCell(cellSize * factor);
+      offX = nx - anchorC * cellSize; offY = ny - anchorR * cellSize;
+      camC = (viewW / 2 - offX) / cellSize; camR = (viewH / 2 - offY) / cellSize;
+      clampCam(); updateOffsets(); drawBoard();
+    }
+
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => resizeCanvas()).observe(document.getElementById('boardScrollArea'));
+    }
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', resizeCanvas);
+    window.addEventListener('DOMContentLoaded', resizeCanvas);
+    window.addEventListener('load', resizeCanvas);
+
+    // 페이지 전체가 핀치로 확대/흔들리지 않도록 차단 (바둑판 영역만 직접 확대)
+    document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    ['gesturestart', 'gesturechange', 'gestureend', 'dblclick'].forEach(t => document.addEventListener(t, (e) => e.preventDefault()));
 
     // ----------------------------------------------------
     // 3·3 금수 판정 로직
@@ -1086,31 +1156,30 @@
     // ----------------------------------------------------
     // Board Drawing
     // ----------------------------------------------------
-        function drawBoard() {
-      const rect = canvas.getBoundingClientRect();
-      const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
-      const size = rect.width > 0 ? rect.width : (parentWidth > 0 ? parentWidth : (canvas.width / dpr || 450));
+    function drawBoard() {
+      if (viewW === 0) return;
+      ctx.clearRect(0, 0, viewW, viewH);
+      ctx.fillStyle = '#c9955a';
+      ctx.fillRect(0, 0, viewW, viewH);
 
-      ctx.clearRect(0, 0, size, size);
+      // 판(나무 판)
+      const pad = cellSize * 0.7;
+      const span = (BOARD_SIZE - 1) * cellSize;
+      ctx.fillStyle = '#e2b078';
+      ctx.fillRect(offX - pad, offY - pad, span + pad * 2, span + pad * 2);
+      ctx.strokeStyle = '#8a5a2b';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(offX - pad, offY - pad, span + pad * 2, span + pad * 2);
 
-      // Grid Lines (100% Perfect Square)
+      // Grid Lines
       ctx.strokeStyle = '#6b4423';
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = Math.max(1.2, cellSize * 0.04);
 
       for (let i = 0; i < BOARD_SIZE; i++) {
-        const pos = margin + i * cellSize;
-
-        // Horizontal line
-        ctx.beginPath();
-        ctx.moveTo(margin, pos);
-        ctx.lineTo(size - margin, pos);
-        ctx.stroke();
-
-        // Vertical line
-        ctx.beginPath();
-        ctx.moveTo(pos, margin);
-        ctx.lineTo(pos, size - margin);
-        ctx.stroke();
+        const px = offX + i * cellSize;
+        const py = offY + i * cellSize;
+        ctx.beginPath(); ctx.moveTo(offX, py); ctx.lineTo(offX + span, py); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px, offY); ctx.lineTo(px, offY + span); ctx.stroke();
       }
 
       // Star Points
@@ -1119,7 +1188,7 @@
       for (let r of starPoints) {
         for (let c of starPoints) {
           ctx.beginPath();
-          ctx.arc(margin + c * cellSize, margin + r * cellSize, 3.5, 0, Math.PI * 2);
+          ctx.arc(offX + c * cellSize, offY + r * cellSize, Math.max(3, cellSize * 0.1), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -1138,8 +1207,8 @@
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 3.5;
         for (let stone of winningStones) {
-          const x = margin + stone.c * cellSize;
-          const y = margin + stone.r * cellSize;
+          const x = offX + stone.c * cellSize;
+          const y = offY + stone.r * cellSize;
           ctx.beginPath();
           ctx.arc(x, y, cellSize * 0.46, 0, Math.PI * 2);
           ctx.stroke();
@@ -1148,18 +1217,18 @@
 
       // Last Move Golden Dot
       if (lastMove) {
-        const x = margin + lastMove.c * cellSize;
-        const y = margin + lastMove.r * cellSize;
+        const x = offX + lastMove.c * cellSize;
+        const y = offY + lastMove.r * cellSize;
         ctx.fillStyle = '#f59e0b';
         ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.arc(x, y, Math.max(4, cellSize * 0.13), 0, Math.PI * 2);
         ctx.fill();
       }
 
       // Forbidden Spot Flash
       if (forbiddenFlash) {
-        const x = margin + forbiddenFlash.c * cellSize;
-        const y = margin + forbiddenFlash.r * cellSize;
+        const x = offX + forbiddenFlash.c * cellSize;
+        const y = offY + forbiddenFlash.r * cellSize;
         const offset = cellSize * 0.3;
         ctx.save();
         ctx.strokeStyle = '#ef4444';
@@ -1175,8 +1244,8 @@
     }
 
     function drawStone(r, c, type) {
-      const x = margin + c * cellSize;
-      const y = margin + r * cellSize;
+      const x = offX + c * cellSize;
+      const y = offY + r * cellSize;
       const radius = cellSize * 0.44;
 
       ctx.save();
@@ -1229,8 +1298,8 @@
       const clickX = clientX - rect.left;
       const clickY = clientY - rect.top;
 
-      const c = Math.round((clickX - margin) / cellSize);
-      const r = Math.round((clickY - margin) / cellSize);
+      const c = Math.round((clickX - offX) / cellSize);
+      const r = Math.round((clickY - offY) / cellSize);
 
       if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
         if (board[r][c] === 0) {
@@ -1251,38 +1320,95 @@
       }
     }
 
-    // Native Mobile Touch Engine (Accurate hardware coordinates + free 2D scroll)
-    canvas.addEventListener('touchstart', (e) => {
+    // 포인터 엔진: 한 손가락 탭=착수, 한 손가락 드래그=이동, 두 손가락=확대/축소
+    const pointers = new Map();
+    let gesture = null;
+    let pinch = null;
+
+    function localXY(e) {
+      const rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    function startPinch() {
+      const pts = Array.from(pointers.values());
+      const rect = canvas.getBoundingClientRect();
+      const mx = (pts[0].x + pts[1].x) / 2 - rect.left, my = (pts[0].y + pts[1].y) / 2 - rect.top;
+      pinch = {
+        dist0: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+        cell0: cellSize,
+        anchorC: (mx - offX) / cellSize,
+        anchorR: (my - offY) / cellSize
+      };
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
       initAudio();
-      if (e.touches && e.touches.length > 0) {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        touchMoved = false;
-      }
-    }, { passive: true });
-
-    canvas.addEventListener('touchmove', (e) => {
-      if (e.touches && e.touches.length > 0) {
-        const dx = e.touches[0].clientX - touchStartX;
-        const dy = e.touches[0].clientY - touchStartY;
-        if (Math.hypot(dx, dy) > 8) {
-          touchMoved = true;
-        }
-      }
-    }, { passive: true });
-
-    canvas.addEventListener('touchend', (e) => {
-      if (!touchMoved) {
-        // Clean tap: Place stone at exact touch location
-        processTap(touchStartX, touchStartY);
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      cancelAnimationFrame(camAnim);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
+      if (pointers.size === 1) {
+        gesture = { moved: false, pinched: false };
+      } else if (pointers.size === 2) {
+        gesture = gesture || { moved: true, pinched: true };
+        gesture.moved = true; gesture.pinched = true;
+        startPinch();
       }
     });
 
-    // Desktop Mouse Click
-    canvas.addEventListener('click', (e) => {
-      if (Date.now() - lastTapTime > 300) {
-        processTap(e.clientX, e.clientY);
+    canvas.addEventListener('pointermove', (e) => {
+      const p = pointers.get(e.pointerId);
+      if (!p || !gesture) return;
+      const rect = canvas.getBoundingClientRect();
+
+      if (pointers.size >= 2 && pinch) {
+        p.x = e.clientX; p.y = e.clientY;
+        const pts = Array.from(pointers.values());
+        const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+        const mx = (pts[0].x + pts[1].x) / 2 - rect.left, my = (pts[0].y + pts[1].y) / 2 - rect.top;
+        userZoomed = true;
+        cellSize = clampCell(pinch.cell0 * dist / pinch.dist0);
+        offX = mx - pinch.anchorC * cellSize; offY = my - pinch.anchorR * cellSize;
+        camC = (viewW / 2 - offX) / cellSize; camR = (viewH / 2 - offY) / cellSize;
+        clampCam(); updateOffsets(); drawBoard();
+        return;
       }
+
+      if (!gesture.moved && Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 8) gesture.moved = true;
+      if (gesture.moved && !gesture.pinched) {
+        camC -= (e.clientX - p.x) / cellSize;
+        camR -= (e.clientY - p.y) / cellSize;
+        clampCam(); updateOffsets(); drawBoard();
+      }
+      p.x = e.clientX; p.y = e.clientY;
+    });
+
+    function endPointer(e, cancelled) {
+      const p = pointers.get(e.pointerId);
+      if (!p) return;
+      const wasTap = gesture && !gesture.moved && !gesture.pinched && pointers.size === 1 && !cancelled;
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinch = null;
+      if (pointers.size === 1 && gesture) { // 두 손가락 중 하나 뗌: 남은 손가락으로 이어서 이동
+        gesture.moved = true;
+        const rest = pointers.values().next().value; rest.sx = rest.x; rest.sy = rest.y;
+      }
+      if (pointers.size === 0) gesture = null;
+      if (wasTap) processTap(e.clientX, e.clientY);
+    }
+    canvas.addEventListener('pointerup', (e) => endPointer(e, false));
+    canvas.addEventListener('pointercancel', (e) => endPointer(e, true));
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const { x, y } = localXY(e);
+      zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, x, y);
+    }, { passive: false });
+
+    document.getElementById('btnZoomIn').addEventListener('click', () => zoomBy(1.25));
+    document.getElementById('btnZoomOut').addEventListener('click', () => zoomBy(1 / 1.25));
+    document.getElementById('btnFocusLast').addEventListener('click', () => {
+      if (lastMove) focusOn(lastMove.r, lastMove.c); else focusOn((BOARD_SIZE - 1) / 2, (BOARD_SIZE - 1) / 2);
     });
 
     function executeMove(r, c, player) {
@@ -1293,6 +1419,7 @@
       board[r][c] = player;
       lastMove = { r, c };
       moveCount++;
+      focusOn(r, c); // 놓은 자리가 화면 중앙에 오도록
       playStoneSound();
 
       const winResult = checkWin(r, c, player);
@@ -1499,6 +1626,7 @@
 
     function resetGame() {
       clearTimeout(aiTimer);
+      focusOn((BOARD_SIZE - 1) / 2, (BOARD_SIZE - 1) / 2, false);
       board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
       currentTurn = 1;
       lastMove = null;
@@ -1639,8 +1767,7 @@
       const challengeUrl = `${getBaseUrl()}?room=${currentRoomId}&bet=${encodeURIComponent(selectedBet)}&rule=${rule33}`;
       if (roomLinkText) {
         const code = currentRoomId.replace('room_', '').toUpperCase();
-        const ruleDesc = rule33 === "black_only" ? "3·3 금수" : "3·3 자유";
-        roomLinkText.textContent = `⚔️ 내기 오목 한판 하실래요?  ${selectedBet} · ${ruleDesc} · 방 ${code}`;
+        roomLinkText.textContent = `⚔️ 내기 오목 한판 하실래요?  ${selectedBet} · 방 ${code}`;
       }
       return challengeUrl;
     }
@@ -1673,7 +1800,6 @@
 
     document.getElementById('btnKakaoShare').addEventListener('click', () => {
       const challengeUrl = updateChallengeLink();
-      const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
       const key = getKakaoKey();
 
       if (key && window.Kakao) {
@@ -1684,7 +1810,7 @@
             objectType: 'feed',
             content: {
               title: '⚔️ 내기 오목 한판 하실래요?',
-              description: `${selectedBet} 내기 · ${ruleDesc}`,
+              description: `${selectedBet} 내기 한판!`,
               imageUrl: 'https://khslam72.github.io/omok/og.png',
               imageWidth: 800,
               imageHeight: 400,
@@ -1710,9 +1836,8 @@
 
     document.getElementById('btnCopyLink').addEventListener('click', () => {
       const challengeUrl = updateChallengeLink();
-      const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
       const shareText = `[⚔️ 오목 도전장이 도착했습니다!]
-"나랑 [${selectedBet}] 내기 오목 한판 붙자!" (${ruleDesc})
+"나랑 [${selectedBet}] 내기 오목 한판 붙자!"
 설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
 
       if (navigator.share) {
@@ -1727,8 +1852,7 @@
 
     document.getElementById('btnShareThreads').addEventListener('click', () => {
       const challengeUrl = updateChallengeLink();
-      const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
-      const text = `나랑 [${selectedBet}] 내기 오목 한판 붙을 사람? ⚔️ (${ruleDesc})
+      const text = `나랑 [${selectedBet}] 내기 오목 한판 붙을 사람? ⚔️
 설치 없이 링크로 1초 만에 바로 시작 👉 ${challengeUrl}`;
       const threadsUrl = `https://www.threads.net/intent/post?text=${encodeURIComponent(text)}`;
       window.open(threadsUrl, '_blank');
@@ -2093,6 +2217,7 @@
           if (board[r][c] === 0) {
             board[r][c] = player;
             lastMove = { r, c };
+            focusOn(r, c);
             playStoneSound();
           }
         }
@@ -2159,16 +2284,7 @@
     resizeCanvas();
     updateUI();
 
-    // Auto-center scroll on load
-    function centerBoardScroll() {
-      const scrollArea = document.getElementById('boardScrollArea');
-      const container = document.getElementById('boardContainer');
-      if (scrollArea && container) {
-        scrollArea.scrollLeft = (container.scrollWidth - scrollArea.clientWidth) / 2;
-      }
-    }
-    window.addEventListener('load', centerBoardScroll);
-    setTimeout(centerBoardScroll, 100);
+    focusOn((BOARD_SIZE - 1) / 2, (BOARD_SIZE - 1) / 2, false);
 
   </script>
 </body>
