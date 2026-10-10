@@ -923,8 +923,21 @@
       } catch (e) {}
     }
 
-    ['touchstart', 'pointerdown', 'click'].forEach(evt => {
-      window.addEventListener(evt, initAudio, { once: true, passive: true });
+    // iOS: 터치 '끝'/클릭 같은 확실한 사용자 동작에서 오디오를 풀어야 소리가 남 (매번 시도)
+    let iosAudioUnlocked = false;
+    function unlockAudio() {
+      initAudio();
+      try {
+        if (audioCtx && audioCtx.state === 'running' && !iosAudioUnlocked) {
+          const buf = audioCtx.createBuffer(1, 1, 22050);
+          const src = audioCtx.createBufferSource();
+          src.buffer = buf; src.connect(audioCtx.destination); src.start(0);
+          iosAudioUnlocked = true;
+        }
+      } catch (e) {}
+    }
+    ['touchstart', 'touchend', 'pointerup', 'click', 'keydown'].forEach(evt => {
+      window.addEventListener(evt, unlockAudio, { passive: true });
     });
 
     // Crisp Baduk Stone Sound (딱!)
