@@ -718,8 +718,8 @@
       <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">🤖 인공지능과 대결 (내가 흑돌, 선공)</div>
       <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
         <button class="bet-opt-btn" data-ai-level="easy">쉬움</button>
-        <button class="bet-opt-btn" data-ai-level="normal">보통</button>
-        <button class="bet-opt-btn" data-ai-level="hard">어려움</button>
+        <button class="bet-opt-btn" data-ai-level="normal">어려움</button>
+        <button class="bet-opt-btn" data-ai-level="hard">최강</button>
       </div>
 
       <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">👥 친구와 대결</div>
@@ -1570,7 +1570,7 @@
 
     function aiPickMove() {
       const AI = 2, HUMAN = 1;
-      const defW = aiLevel === 'hard' ? 1.1 : (aiLevel === 'normal' ? 0.95 : 0.6);
+      const defW = aiLevel === 'easy' ? 0.95 : 1.1;
       const cand = aiCandidates();
       const center = (BOARD_SIZE - 1) / 2;
 
@@ -1582,7 +1582,8 @@
       });
       scored.sort((a, b) => b.score - a.score);
 
-      if (aiLevel === 'hard') {
+      if (aiLevel === 'hard') return aiExpertMove(scored);
+      if (aiLevel === 'normal') {
         // 상위 후보에 대해 "내가 둔 뒤 상대의 최선 응수"까지 한 수 더 내다본다
         const top = scored.slice(0, 8);
         for (const m of top) {
@@ -1598,14 +1599,134 @@
         top.sort((a, b) => b.score - a.score);
         return top[0];
       }
-      if (aiLevel === 'easy') {
-        // 이기는 수/막아야 하는 수가 아니면 상위 몇 개 중 무작위
-        if (scored[0].score < 9000) {
-          const pool = scored.slice(0, Math.min(6, scored.length));
-          return pool[Math.floor(Math.random() * pool.length)];
+      return scored[0];
+    }
+
+    // ----- 최강 AI: 알파-베타 탐색(4수 앞) + 전판 평가 -----
+    function evalBoard() {
+      // AI(2) 관점 점수 = AI 패턴 - 흑 패턴*1.1
+      let sc = 0;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const p = board[r][c];
+          if (!p) continue;
+          for (const [dr, dc] of AI_DIRS) {
+            const pr = r - dr, pc = c - dc;
+            if (pr >= 0 && pr < BOARD_SIZE && pc >= 0 && pc < BOARD_SIZE && board[pr][pc] === p) continue;
+            let cnt = 0, nr = r, nc = c;
+            while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === p) { cnt++; nr += dr; nc += dc; }
+            let open = 0;
+            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) open++;
+            if (pr >= 0 && pr < BOARD_SIZE && pc >= 0 && pc < BOARD_SIZE && board[pr][pc] === 0) open++;
+            let v = 0;
+            if (cnt >= 5) v = 100000;
+            else if (open === 0) v = 0;
+            else if (cnt === 4) v = open === 2 ? 10000 : 1200;
+            else if (cnt === 3) v = open === 2 ? 1000 : 80;
+            else if (cnt === 2) v = open === 2 ? 60 : 8;
+            else v = open === 2 ? 3 : 1;
+            sc += p === 2 ? v : -v * 1.1;
+          }
         }
       }
-      return scored[0];
+      return sc;
+    }
+    let aiDeadline = 0;
+    function orderedMoves(player, limit) {
+      const opp = player === 2 ? 1 : 2;
+      const list = aiCandidates().map(({ r, c }) => ({ r, c, s: lineScoreAt(r, c, player) * 1.05 + lineScoreAt(r, c, opp) }));
+      list.sort((a, b) => b.s - a.s);
+      return list.slice(0, limit);
+    }
+    function abSearch(depth, alpha, beta, player) {
+      if (depth === 0 || Date.now() > aiDeadline) return evalBoard();
+      const moves = orderedMoves(player, depth >= 3 ? 10 : 7);
+      let best = player === 2 ? -Infinity : Infinity;
+      for (const m of moves) {
+        if (lineScoreAt(m.r, m.c, player) >= 100000) return player === 2 ? 1e6 + depth : -1e6 - depth;
+        board[m.r][m.c] = player;
+        const v = abSearch(depth - 1, alpha, beta, player === 2 ? 1 : 2);
+        board[m.r][m.c] = 0;
+        if (player === 2) { if (v > best) best = v; if (best > alpha) alpha = best; }
+        else { if (v < best) best = v; if (best < beta) beta = best; }
+        if (beta <= alpha) break;
+      }
+      return best === Infinity || best === -Infinity ? evalBoard() : best;
+    }
+    // 4(5목 직전) 연속 공격으로 이기는 수순(VCF) 탐색
+    function fiveCells(r, c, p) {
+      // (r,c)에 p가 놓여 있을 때, 한 수로 5목이 되는 빈 칸들
+      const res = [];
+      for (const [dr, dc] of AI_DIRS) {
+        for (let k = -4; k <= 0; k++) {
+          let pc = 0, empty = null, bad = false, hasMe = false;
+          for (let i = 0; i < 5; i++) {
+            const nr = r + dr * (k + i), nc = c + dc * (k + i);
+            if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) { bad = true; break; }
+            const v = board[nr][nc];
+            if (v === p) { pc++; if (nr === r && nc === c) hasMe = true; }
+            else if (v === 0) { if (empty) { bad = true; break; } empty = nr * 100 + nc; }
+            else { bad = true; break; }
+          }
+          if (!bad && pc === 4 && empty !== null && hasMe && res.indexOf(empty) < 0) res.push(empty);
+        }
+      }
+      return res;
+    }
+    function vcf(p, o, depth) {
+      if (depth <= 0 || Date.now() > aiDeadline) return null;
+      for (const { r, c } of aiCandidates()) {
+        board[r][c] = p;
+        const w = fiveCells(r, c, p);
+        if (w.length >= 2) { board[r][c] = 0; return { r, c }; }
+        if (w.length === 1) {
+          const br = Math.floor(w[0] / 100), bc = w[0] % 100;
+          if (lineScoreAt(br, bc, o) < 100000) {
+            board[br][bc] = o;
+            const counter = fiveCells(br, bc, o).length > 0;
+            const sub = counter ? null : vcf(p, o, depth - 1);
+            board[br][bc] = 0;
+            if (sub) { board[r][c] = 0; return { r, c }; }
+          }
+        }
+        board[r][c] = 0;
+      }
+      return null;
+    }
+    function aiExpertMove(scored) {
+      // 1) 즉시 승리 / 즉시 방어
+      for (const m of scored) if (lineScoreAt(m.r, m.c, 2) >= 100000) return m;
+      for (const m of scored) if (lineScoreAt(m.r, m.c, 1) >= 100000) return m;
+      // 2) 탐색 (시간 제한 1.8초, 2수 → 4수 순으로 깊게)
+      aiDeadline = Date.now() + 2800;
+      // 3) 4목 연속 공격으로 이길 수 있으면 바로 실행
+      const win = vcf(2, 1, 12);
+      if (win) return win;
+      let roots = orderedMoves(2, 14);
+      // 4) 내가 둔 뒤 상대가 4목 연속 공격으로 이기게 되는 수는 제외
+      const safe = roots.filter(m => {
+        board[m.r][m.c] = 2;
+        const bad = vcf(1, 2, 10);
+        board[m.r][m.c] = 0;
+        return !bad;
+      });
+      if (safe.length) roots = safe;
+      let bestMove = roots[0];
+      for (const depth of [2, 4, 6]) {
+        let bestV = -Infinity, bm = null;
+        for (const m of roots) {
+          board[m.r][m.c] = 2;
+          const v = lineScoreAt(m.r, m.c, 2) >= 100000 ? 1e7 : abSearch(depth - 1, -Infinity, Infinity, 1);
+          board[m.r][m.c] = 0;
+          if (Date.now() > aiDeadline) break;
+          m.v = v;
+          if (v > bestV) { bestV = v; bm = m; }
+        }
+        if (bm && Date.now() <= aiDeadline) bestMove = bm;
+        roots.sort((a, b) => (b.v ?? -Infinity) - (a.v ?? -Infinity));
+        if (Date.now() > aiDeadline) break;
+      }
+      return bestMove;
     }
 
     function scheduleAiMove() {
@@ -2253,7 +2374,7 @@ ${inviteFriendly ? '' : '"' + selectedBet + ' 내기!"\n'}
 
       if (mode === 'ai') {
         aiLevel = level || aiLevel;
-        const names = { easy: '쉬움', normal: '보통', hard: '어려움' };
+        const names = { easy: '쉬움', normal: '어려움', hard: '최강' };
         document.getElementById('modeRole').textContent = `AI 대결 · ${names[aiLevel]} (나: 흑돌)`;
       } else if (mode === 'friend') {
         if (!startOnlineRoom(null)) {
