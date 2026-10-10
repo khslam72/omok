@@ -732,6 +732,7 @@
   <!-- Challenge Modal -->
   <div class="modal-overlay" id="modalChallenge">
     <div class="modal">
+      <button id="btnXChallenge" aria-label="닫기" style="float:right;background:none;border:0;color:#94a3b8;font-size:24px;line-height:1;padding:0 2px;cursor:pointer;">✕</button>
       <h2>⚔️ 오목 도전장 보내기</h2>
       <p>어떤 오목을 할지 정하고 친구를 초대하세요!</p>
 
@@ -2024,6 +2025,9 @@
               { title: '⚔️ 대전 시작하기', link: { mobileWebUrl: challengeUrl, webUrl: challengeUrl } }
             ]
           });
+          // 보낸 뒤에는 초대창을 닫고 대전실(방장)로 돌아간다
+          closeInvite();
+          showToast('초대장을 보냈어요. 친구가 들어오길 기다리는 중…');
           return;
         } catch (err) {
           console.error(err);
@@ -2032,9 +2036,9 @@
       }
       // 키가 없거나 실패하면 → 폰 기본 공유창 (링크만 보내면 카톡이 미리보기 카드로 보여줍니다)
       if (navigator.share) {
-        navigator.share({ title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`, url: challengeUrl }).catch(() => {});
+        navigator.share({ title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`, url: challengeUrl }).then(closeInvite).catch(() => {});
       } else {
-        navigator.clipboard.writeText(challengeUrl).then(() => showToast("초대 링크가 복사되었습니다. 카톡에 붙여넣어 보내세요!"));
+        navigator.clipboard.writeText(challengeUrl).then(() => { showToast("초대 링크가 복사되었습니다. 카톡에 붙여넣어 보내세요!"); closeInvite(); });
       }
     });
 
@@ -2045,7 +2049,7 @@ ${inviteFriendly ? '' : '"' + selectedBet + ' 내기!"\n'}
 설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
 
       if (navigator.share) {
-        navigator.share({ title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`, url: challengeUrl }).catch(() => {});
+        navigator.share({ title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`, url: challengeUrl }).then(closeInvite).catch(() => {});
       } else {
         navigator.clipboard.writeText(shareText).then(() => {
           showToast("도전장 링크가 복사되었습니다!");
@@ -2060,11 +2064,13 @@ ${inviteFriendly ? '' : '"' + selectedBet + ' 내기!"\n'}
 설치 없이 링크로 1초 만에 바로 시작 👉 ${challengeUrl}`;
       const threadsUrl = `https://www.threads.net/intent/post?text=${encodeURIComponent(text)}`;
       window.open(threadsUrl, '_blank');
+      closeInvite();
     });
 
-    document.getElementById('btnCloseChallenge').addEventListener('click', () => {
-      modalChallenge.classList.remove('active');
-    });
+    function closeInvite() { modalChallenge.classList.remove('active'); }
+    document.getElementById('btnCloseChallenge').addEventListener('click', closeInvite);
+    document.getElementById('btnXChallenge').addEventListener('click', closeInvite);
+    modalChallenge.addEventListener('click', (e) => { if (e.target === modalChallenge) closeInvite(); });
 
     // ----------------------------------------------------
 
