@@ -1024,6 +1024,21 @@
     const KAKAO_JS_KEY = '';      // 카카오 JavaScript 키를 여기에 직접 넣으면 모든 접속자가 사용 가능
     const FIREBASE_CONFIG = null; // 예: { apiKey: "...", databaseURL: "...", ... } 직접 넣으면 상대방도 바로 온라인 접속
 
+    // 초대 링크를 짧게: ?room=코드&b=내기번호&r=룰(1=3·3 금수, 0=자유). 예전 긴 형식(bet, rule)도 계속 지원
+    const BET_LIST = ['☕ 커피 쏘기', '🍱 점심 쏘기', '🏃 빵/간식 셔틀', '👑 소원 1회권'];
+    function readInvite(params) {
+      let bet = null, rule = null;
+      const b = params.get('b');
+      if (b !== null && BET_LIST[Number(b)]) bet = BET_LIST[Number(b)];
+      else if (params.get('bet')) bet = decodeURIComponent(params.get('bet'));
+      const r = params.get('r');
+      if (r === '1') rule = 'black_only';
+      else if (r === '0') rule = 'free';
+      else if (params.get('rule')) rule = params.get('rule');
+      return { bet, rule };
+    }
+    const normalizeRoomId = (id) => (id.indexOf('room_') === 0 ? id : 'room_' + id);
+
     function getBaseUrl() {
       if (/^https?:$/.test(window.location.protocol)) {
         return window.location.origin + window.location.pathname;
@@ -1791,7 +1806,7 @@
       if (!currentRoomId) {
         currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
       }
-      const challengeUrl = `${getBaseUrl()}?room=${currentRoomId}&bet=${encodeURIComponent(selectedBet)}&rule=${rule33}`;
+      const challengeUrl = `${getBaseUrl()}?room=${currentRoomId.replace('room_', '')}&b=${Math.max(0, BET_LIST.indexOf(selectedBet))}&r=${rule33 === 'black_only' ? 1 : 0}`;
       if (roomLinkText) {
         const code = currentRoomId.replace('room_', '').toUpperCase();
         roomLinkText.textContent = `⚔️ 내기 오목 한판 하실래요?  ${selectedBet} · 방 ${code}`;
@@ -2167,16 +2182,15 @@
       isOnlineMode = true;
 
       const params = new URLSearchParams(window.location.search);
-      const betParam = params.get('bet');
-      const ruleParam = params.get('rule');
+      const invite = readInvite(params);
 
       if (roomParam) {
-        if (betParam) {
-          selectedBet = decodeURIComponent(betParam);
+        if (invite.bet) {
+          selectedBet = invite.bet;
           document.getElementById('betName').textContent = selectedBet;
           updateCoupangAds(selectedBet);
         }
-        if (ruleParam) { rule33 = ruleParam; setRule33(ruleParam, false); }
+        if (invite.rule) { rule33 = invite.rule; setRule33(invite.rule, false); }
         currentRoomId = roomParam;
         myRole = 2; // Guest
         document.getElementById('modeRole').textContent = "친구 대결 (백돌 - 도전자)";
@@ -2282,14 +2296,13 @@
 
     // Check URL parameters for offline/single-player test mode as well
     const urlParams = new URLSearchParams(window.location.search);
-    const initialBet = urlParams.get('bet');
-    const initialRule = urlParams.get('rule');
-    if (initialBet) {
-      selectedBet = decodeURIComponent(initialBet);
+    const invite0 = readInvite(urlParams);
+    if (invite0.bet) {
+      selectedBet = invite0.bet;
       document.getElementById('betName').textContent = selectedBet;
     }
-    if (initialRule) {
-      setRule33(initialRule, false);
+    if (invite0.rule) {
+      setRule33(invite0.rule, false);
     } else {
       setRule33(rule33, false);
     }
@@ -2301,7 +2314,7 @@
       // 친구 도전장 링크로 들어온 경우: 모드 선택 없이 바로 도전자로 입장
       gameMode = 'friend';
       document.getElementById('modalMode').classList.remove('active');
-      if (!startOnlineRoom(roomFromUrl)) {
+      if (!startOnlineRoom(normalizeRoomId(roomFromUrl))) {
         document.getElementById('modeRole').textContent = "친구 대결 (온라인 서버 미설정)";
         setTimeout(() => showToast("온라인 서버가 아직 준비되지 않았습니다."), 400);
       }
