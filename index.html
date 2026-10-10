@@ -645,6 +645,12 @@
     </div>
   </header>
 
+  <!-- 친구 상태 바 -->
+  <div id="presenceBar" style="display:none;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px;font-size:12px;background:#1e293b;color:#e2e8f0;border-bottom:1px solid #334155;">
+    <span id="presenceText"></span>
+    <span id="presenceBtns" style="display:flex;gap:6px;flex-shrink:0;"></span>
+  </div>
+
   <!-- Info Bar -->
   <div class="info-bar">
     <div class="player-badge">
@@ -2206,7 +2212,12 @@
 
     // ----- 모드 전환 -----
     function setMode(mode, level) {
-      if (dbRef) { try { dbRef.off(); } catch (e) {} dbRef = null; }
+      if (dbRef) {
+        try { dbRef.off(); dbRef.child('presence').off(); if (myRole) dbRef.child('presence/' + myRole).remove(); } catch (e) {}
+        dbRef = null;
+      }
+      clearTimeout(presenceTimer);
+      setPresenceBar('');
       isOnlineMode = false;
       myRole = 0;
       currentRoomId = null;
@@ -2246,8 +2257,102 @@
       document.getElementById('modalMode').classList.add('active');
     });
 
+    // ----- 친구 접속 상태(프레즌스) -----
+    let presenceTimer = null;
+    let presenceState = '';
+    function setPresenceBar(text, buttons) {
+      const bar = document.getElementById('presenceBar');
+      if (!text) { bar.style.display = 'none'; return; }
+      bar.style.display = 'flex';
+      document.getElementById('presenceText').textContent = text;
+      const box = document.getElementById('presenceBtns');
+      box.innerHTML = '';
+      (buttons || []).forEach(b => {
+        const el = document.createElement('button');
+        el.textContent = b.label;
+        el.style.cssText = 'padding:4px 9px;border-radius:8px;border:1px solid #475569;background:' + (b.primary ? '#6366f1' : '#334155') + ';color:#fff;font-size:12px;cursor:pointer;';
+        el.addEventListener('click', b.onClick);
+        box.appendChild(el);
+      });
+    }
+    function playVsAiFromInvite() {
+      clearTimeout(presenceTimer);
+      setPresenceBar('');
+      try { history.replaceState(null, '', getBaseUrl()); } catch (e) {}
+      setMode('ai', 'normal');
+    }
+    function newRoomFromInvite() {
+      clearTimeout(presenceTimer);
+      try { history.replaceState(null, '', getBaseUrl()); } catch (e) {}
+      setMode('friend');
+      updateChallengeLink();
+      modalChallenge.classList.add('active');
+    }
+    function showOfflineChoice(msg, retryLabel, retryFn) {
+      const btns = [];
+      if (retryFn) btns.push({ label: retryLabel, onClick: retryFn });
+      btns.push({ label: '🤖 인공지능과 대결', primary: true, onClick: playVsAiFromInvite });
+      setPresenceBar(msg, btns);
+    }
+    // 내 접속 표시 + 상대 접속 감시
+    function setupPresence(roomId, role) {
+      const root = firebase.database().ref('omok_rooms/' + roomId + '/presence');
+      const mine = root.child(String(role));
+      const other = root.child(String(role === 1 ? 2 : 1));
+      const otherName = role === 1 ? '친구' : '방장';
+      let everSeen = false;
+
+      const claim = () => {
+        if (role === 2) {
+          // 손님 자리는 한 명만: 이미 차 있으면 진행 중인 방
+          return mine.transaction(cur => cur ? undefined : { t: Date.now() }).then(res => {
+            if (!res.committed) {
+              showOfflineChoice('이미 다른 분과 진행 중인 대국이에요.', '새 방 만들기', newRoomFromInvite);
+              return false;
+            }
+            mine.onDisconnect().remove();
+            return true;
+          });
+        }
+        mine.set({ t: Date.now() });
+        mine.onDisconnect().remove();
+        return Promise.resolve(true);
+      };
+
+      claim().then(ok => {
+        if (!ok) return;
+        const waitMsg = role === 1 ? '친구를 기다리는 중… 링크를 보내주세요' : '방장 확인 중…';
+        setPresenceBar(waitMsg);
+        presenceState = 'waiting';
+        // 10초 안에 상대가 없으면 선택지 제공 (자동 전환 없음)
+        const askChoice = () => {
+          if (presenceState !== 'waiting') return;
+          showOfflineChoice(role === 1 ? '친구가 아직 들어오지 않았어요.' : '방장이 지금 접속해 있지 않아요.', '계속 기다리기', () => {
+            setPresenceBar(waitMsg);
+            presenceTimer = setTimeout(askChoice, 15000);
+          });
+        };
+        presenceTimer = setTimeout(askChoice, 10000);
+
+        other.on('value', snap => {
+          if (snap.val()) {
+            everSeen = true;
+            presenceState = 'online';
+            clearTimeout(presenceTimer);
+            setPresenceBar('🟢 ' + otherName + ' 접속 중');
+          } else if (everSeen) {
+            presenceState = 'waiting';
+            showOfflineChoice('⚪ ' + otherName + ' 연결이 끊겼어요.', '기다리기', () => {
+              setPresenceBar('다시 접속을 기다리는 중…');
+            });
+          }
+        });
+      });
+    }
+
     function connectToRoom(roomId) {
       dbRef = firebase.database().ref('omok_rooms/' + roomId);
+      try { setupPresence(roomId, myRole); } catch (e) {}
 
       dbRef.on('value', snapshot => {
         const data = snapshot.val();
@@ -2316,7 +2421,7 @@
       document.getElementById('modalMode').classList.remove('active');
       if (!startOnlineRoom(normalizeRoomId(roomFromUrl))) {
         document.getElementById('modeRole').textContent = "친구 대결 (온라인 서버 미설정)";
-        setTimeout(() => showToast("온라인 서버가 아직 준비되지 않았습니다."), 400);
+        showOfflineChoice('친구와 연결할 수 없어요. 대신 인공지능과 대결할 수 있어요.', null, null);
       }
     }
     renderLocalStats();
