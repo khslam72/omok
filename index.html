@@ -1,0 +1,1920 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>한판붙자! 1:1 내기 오목</title>
+  
+  <!-- Firebase SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+  <!-- Google Fonts & Lucide Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.8);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #f59e0b;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --board-bg: #e2b078;
+      --board-line: #6b4423;
+      --board-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.6);
+      --black-stone: radial-gradient(circle at 35% 35%, #555 0%, #111 60%, #000 100%);
+      --white-stone: radial-gradient(circle at 35% 35%, #ffffff 0%, #f1f5f9 50%, #cbd5e1 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, #0f172a 100%);
+      color: var(--text-main);
+      height: 100vh;
+      height: 100dvh;
+      max-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px calc(8px + env(safe-area-inset-bottom));
+      overflow: hidden; /* No page vertical scroll! UI is 100% locked on screen */
+      position: relative;
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      width: 90%;
+      max-width: 380px;
+    }
+
+    .toast {
+      background: rgba(239, 68, 68, 0.95);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 24px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: toastIn 0.25s cubic-bezier(0.16, 1, 0.3, 1), toastOut 0.25s ease-in 2.2s forwards;
+    }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(-16px) scale(0.9); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes toastOut {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(-12px); }
+    }
+
+    header {
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2px 2px 4px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #fff;
+    }
+
+    .brand span {
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .icon-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* Game Info Bar */
+    .info-bar {
+      width: 100%;
+      max-width: 440px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 6px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      flex-shrink: 0;
+    }
+
+    .player-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .stone-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      flex-shrink: 0;
+    }
+
+    .stone-icon.black {
+      background: var(--black-stone);
+    }
+
+    .stone-icon.white {
+      background: var(--white-stone);
+    }
+
+    .player-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .player-role {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .player-turn {
+      font-size: 0.95rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .rule-tag {
+      font-size: 0.65rem;
+      padding: 3px 8px;
+      border-radius: 8px;
+      background: rgba(239, 68, 68, 0.18);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      transition: all 0.15s;
+    }
+
+    .rule-tag:active {
+      transform: scale(0.95);
+    }
+
+    .rule-tag.free {
+      background: rgba(34, 197, 94, 0.18);
+      color: #4ade80;
+      border-color: rgba(34, 197, 94, 0.4);
+    }
+
+    .bet-tag {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    /* Board Container */
+    /* Board Scroll Area (125% Square Board with 2D Pan: X and Y Scroll) */
+    .board-scroll-area {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      max-width: 440px;
+      overflow-x: auto;
+      overflow-y: auto; /* Both X and Y scrolling enabled! */
+      -webkit-overflow-scrolling: touch;
+      border-radius: 16px;
+      touch-action: pan-x pan-y;
+      box-shadow: var(--board-shadow);
+      border: 3px solid #b88655;
+      margin: 4px 0;
+      scrollbar-width: none;
+      
+    }
+
+    .board-scroll-area {
+      scrollbar-width: none !important; /* Hide scrollbar on Firefox */
+      -ms-overflow-style: none !important; /* Hide on IE/Edge */
+    }
+    .board-scroll-area::-webkit-scrollbar {
+      display: none !important; /* Hide on Chrome/Safari/KakaoTalk/Samsung */
+      width: 0 !important;
+      height: 0 !important;
+    }
+
+    .board-container {
+      position: relative;
+      width: 125%;
+      min-width: 125%;
+      aspect-ratio: 1 / 1; /* 100% Perfect Square! */
+      background: var(--board-bg);
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: pan-x pan-y;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: pointer;
+      border-radius: 8px;
+      touch-action: pan-x pan-y;
+    }
+
+    /* Turn Indicator */
+    .turn-indicator {
+      margin-top: 4px;
+      width: 100%;
+      max-width: 440px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .turn-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* Actions Bottom Bar */
+    .actions-bar {
+      margin-top: 6px;
+      width: 100%;
+      max-width: 440px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.12s ease-in-out;
+    }
+
+    .btn:active {
+      transform: scale(0.96);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff;
+      border: none;
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4);
+    }
+
+    /* Coupang Partners Ad Slots */
+    .ad-banner-container {
+      margin-top: 6px;
+      width: 100%;
+      max-width: 440px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .ad-banner-link {
+      width: 100%;
+      background: linear-gradient(135deg, #1e293b, #0f172a);
+      border: 1.5px solid rgba(245, 158, 11, 0.4);
+      border-radius: 12px;
+      padding: 9px 12px;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+      transition: all 0.15s ease-in-out;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    }
+
+    .ad-banner-link:active {
+      transform: scale(0.98);
+    }
+
+    .ad-content {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .ad-badge {
+      background: #f59e0b;
+      color: #000;
+      font-size: 0.65rem;
+      font-weight: 900;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .coupang-notice {
+      font-size: 0.62rem;
+      color: #64748b;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    .ad-winner-btn {
+      width: 100%;
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px dashed rgba(245, 158, 11, 0.5);
+      color: #fbbf24;
+      padding: 10px 12px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-size: 0.84rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    /* Modals */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .modal {
+      background: #1e293b;
+      border: 1px solid var(--card-border);
+      width: 100%;
+      max-width: 380px;
+      border-radius: 20px;
+      padding: 22px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      text-align: center;
+    }
+
+    .modal h2 {
+      font-size: 1.3rem;
+      margin-bottom: 6px;
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .modal p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+
+    .bet-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .bet-opt-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 10px 8px;
+      border-radius: 12px;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .bet-opt-btn.selected {
+      background: rgba(245, 158, 11, 0.2);
+      border-color: #f59e0b;
+      color: #fbbf24;
+    }
+
+    .share-link-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px dashed rgba(255, 255, 255, 0.15);
+      padding: 10px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      word-break: break-all;
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+
+    .winner-trophy {
+      font-size: 3.2rem;
+      margin-bottom: 10px;
+      animation: bounce 0.8s infinite alternate;
+    }
+
+    @keyframes bounce {
+      from { transform: translateY(0); }
+      to { transform: translateY(-8px); }
+    }
+
+    .winner-bet-highlight {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      padding: 6px 14px;
+      border-radius: 12px;
+      font-weight: 700;
+      display: inline-block;
+      margin-bottom: 18px;
+      font-size: 0.95rem;
+    }
+
+    .settings-group {
+      text-align: left;
+      margin-bottom: 16px;
+    }
+
+    .settings-label {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .firebase-settings-input {
+      width: 100%;
+      height: 90px;
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      color: #e2e8f0;
+      padding: 8px;
+      font-size: 0.75rem;
+      font-family: monospace;
+      border-radius: 10px;
+      resize: vertical;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <i data-lucide="swords" style="color: #f59e0b;"></i>
+      <span>한판붙자</span> 오목
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="btnSound" title="소리 켜기/끄기">
+        <i data-lucide="volume-2" id="soundIcon"></i>
+      </button>
+      <button class="icon-btn" id="btnStats" title="대결 통계">
+        <i data-lucide="bar-chart-2"></i>
+      </button>
+      <button class="icon-btn" id="btnSettings" title="온라인/수익 설정">
+        <i data-lucide="settings"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Info Bar -->
+  <div class="info-bar">
+    <div class="player-badge">
+      <div class="stone-icon" id="currentStoneIcon"></div>
+      <div class="player-text">
+        <span class="player-role" id="modeRole">로컬 2인 연습</span>
+        <div class="player-turn">
+          <span id="turnText">흑돌 차례</span>
+          <button class="rule-tag" id="ruleTagToggle" title="터치하여 3·3 규칙 변경">3·3 금수 🔄</button>
+        </div>
+      </div>
+    </div>
+    <div class="bet-tag" id="displayBetTag">
+      <i data-lucide="coffee" style="width: 14px; height: 14px;"></i>
+      <span id="betName">커피 쏘기</span>
+    </div>
+  </div>
+
+  <!-- Board Scroll Area (125% Enlarged) -->
+  <div class="board-scroll-area" id="boardScrollArea">
+    <div class="board-container" id="boardContainer">
+      <canvas id="omokCanvas" width="700" height="700"></canvas>
+    </div>
+  </div>
+
+  <!-- Floating Status Banner -->
+  <div class="turn-indicator">
+    <span class="turn-dot" id="turnDot" style="background: #111;"></span>
+    <span id="subStatusText">흑돌은 3·3(활삼 2개)을 둘 수 없습니다</span>
+  </div>
+
+  <!-- Actions Bottom Bar -->
+  <div class="actions-bar">
+    <button class="btn" id="btnRestart">
+      <i data-lucide="rotate-ccw"></i> 판 비우기
+    </button>
+    <button class="btn btn-primary" id="btnShareChallenge">
+      <i data-lucide="send"></i> 친구 도전장
+    </button>
+  </div>
+
+  <!-- Coupang Partners Bottom Ad Slot -->
+  <div class="ad-banner-container" id="adBottomSlot">
+    <a href="https://link.coupang.com/a/sample" target="_blank" rel="noopener noreferrer" class="ad-banner-link" id="coupangBannerLink">
+      <div class="ad-content">
+        <span class="ad-badge">AD</span>
+        <span class="ad-text" id="coupangBannerText">☕ 패배자 커피 쏘기 & 당일 배송 기프티콘 모음</span>
+      </div>
+      <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: #f59e0b;"></i>
+    </a>
+    <span class="coupang-notice">이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</span>
+  </div>
+
+  <!-- Challenge Modal -->
+  <div class="modal-overlay" id="modalChallenge">
+    <div class="modal">
+      <h2>⚔️ 오목 도전장 보내기</h2>
+      <p>내기 종목과 3·3 룰을 직접 선택하여 도전하세요!</p>
+
+      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">1. 내기 종목 선택</div>
+
+      <div class="bet-options">
+        <button class="bet-opt-btn selected" data-bet="☕ 커피 쏘기">
+          <i data-lucide="coffee"></i> 커피 쏘기
+        </button>
+        <button class="bet-opt-btn" data-bet="🍱 점심 쏘기">
+          <i data-lucide="utensils"></i> 점심 쏘기
+        </button>
+        <button class="bet-opt-btn" data-bet="🏃 빵/간식 셔틀">
+          <i data-lucide="shopping-bag"></i> 빵/간식
+        </button>
+        <button class="bet-opt-btn" data-bet="👑 소원 1회권">
+          <i data-lucide="crown"></i> 소원권
+        </button>
+      </div>
+
+      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">2. 삼삼(3·3) 룰 적용 여부</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+        <button class="bet-opt-btn selected" id="btnRule33Prohibit" data-rule="black_only">
+          <i data-lucide="shield-alert"></i> 3·3 금수 적용
+        </button>
+        <button class="bet-opt-btn" id="btnRule33Free" data-rule="free">
+          <i data-lucide="zap"></i> 3·3 자유 (허용)
+        </button>
+      </div>
+
+      <div class="share-link-box" id="roomLinkText">
+        도전 링크 생성 중...
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn btn-primary" id="btnCopyLink">
+          <i data-lucide="message-circle"></i> 카카오톡 / 친구에게 공유
+        </button>
+        <button class="btn" id="btnShareThreads" style="background: #000; border: 1px solid rgba(255,255,255,0.2); color: #fff;">
+          <i data-lucide="at-sign"></i> 스레드(Threads)에 도전장 올리기
+        </button>
+        <button class="btn" id="btnCloseChallenge">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Winner Modal -->
+  <div class="modal-overlay" id="modalWinner">
+    <div class="modal">
+      <div class="winner-trophy">🏆</div>
+      <h2 id="winnerTitle">흑돌 승리!</h2>
+      <p id="winnerTurns">총 23수 만에 승부를 결정지었습니다!</p>
+      <div class="winner-bet-highlight" id="winnerBetPrize">
+        ☕ 커피 획득 확정!
+      </div>
+
+      <a href="https://link.coupang.com/a/sample" target="_blank" rel="noopener noreferrer" class="ad-winner-btn" id="coupangWinnerLink">
+        <i data-lucide="shopping-cart"></i> <span id="coupangWinnerText">패배자 벌칙 상품(커피/간식) 사러 가기</span>
+      </a>
+      <div style="font-size: 0.6rem; color: #64748b; margin-top: -4px; margin-bottom: 8px;">이 링크는 쿠팡 파트너스 활동의 일환으로 일정액의 수수료를 제공받습니다.</div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn btn-primary" id="btnRematch">
+          <i data-lucide="swords"></i> 재대결 (한 판 더!)
+        </button>
+        <button class="btn" id="btnShareWinner">
+          <i data-lucide="share-2"></i> 단톡방에 승리 자랑하기
+        </button>
+        <button class="btn" id="btnCloseWinner" style="font-size: 0.8rem; padding: 8px;">
+          결과 닫기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Modal (Global & Local) -->
+  <div class="modal-overlay" id="modalStats">
+    <div class="modal">
+      <div style="font-size: 1.8rem; margin-bottom: 6px;">📊</div>
+      <h2>오목 대결 통계 리포트</h2>
+      <p style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 16px;">플레이어들의 누적 대결 기록과 인기 내기 종목 통계입니다.</p>
+
+      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 14px; padding: 14px; margin-bottom: 12px; text-align: left;">
+        <div style="font-size: 0.75rem; color: #f59e0b; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+          <span>🌐 전체 사용자 실시간 통계</span>
+          <span id="statsGlobalSync" style="font-size: 0.65rem; color: #64748b; font-weight: normal;">실시간 연동 중</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+          <div style="background: rgba(255,255,255,0.03); padding: 8px 10px; border-radius: 8px;">
+            <div style="font-size: 0.68rem; color: #94a3b8;">총 대결 성사 수</div>
+            <div id="statTotalGames" style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">0판</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 8px 10px; border-radius: 8px;">
+            <div style="font-size: 0.68rem; color: #94a3b8;">승부 결정(완료)</div>
+            <div id="statFinishedGames" style="font-size: 1.25rem; font-weight: 800; color: #4ade80;">0회</div>
+          </div>
+        </div>
+        <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 4px;">인기 내기 종목 분포</div>
+        <div id="statBetDistribution" style="font-size: 0.72rem; color: #cbd5e1; display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; justify-content: space-between;"><span>☕ 커피 쏘기</span><span id="statBetCoffee" style="font-weight: 700;">0회</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>🍱 점심 쏘기</span><span id="statBetMeal" style="font-weight: 700;">0회</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>🏃 빵/간식</span><span id="statBetSnack" style="font-weight: 700;">0회</span></div>
+          <div style="display: flex; justify-content: space-between;"><span>👑 소원권</span><span id="statBetWish" style="font-weight: 700;">0회</span></div>
+        </div>
+      </div>
+
+      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; text-align: left;">
+        <div style="font-size: 0.75rem; color: #a78bfa; font-weight: 700; margin-bottom: 6px;">📱 내 기기 플레이 기록</div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #cbd5e1;">
+          <span>내 플레이 횟수: <strong id="statMyTotal" style="color: #fff;">0</strong>판</span>
+          <span>흑 승: <strong id="statMyBlackWin" style="color: #fbbf24;">0</strong>회 / 백 승: <strong id="statMyWhiteWin" style="color: #e2e8f0;">0</strong>회</span>
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="btnCloseStats" style="width: 100%;">닫기</button>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="modalSettings">
+    <div class="modal">
+      <h2>⚙️ 관리자 설정 (온라인 & 수익)</h2>
+
+      <div class="settings-group">
+        <label class="settings-label">내기 종목별 쿠팡 파트너스 링크 설정</label>
+        <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+          <div>
+            <span style="font-size: 0.72rem; color: #f59e0b; font-weight: 700;">☕ 커피 쏘기 링크 (기프티콘/커피교환권)</span>
+            <input type="text" id="coupangCoffeeUrl" class="firebase-settings-input" style="height: 34px; font-size: 0.75rem;" placeholder="https://link.coupang.com/a/coffee...">
+          </div>
+          <div>
+            <span style="font-size: 0.72rem; color: #f59e0b; font-weight: 700;">🍱 점심 쏘기 링크 (외식상품권/배민쿠폰)</span>
+            <input type="text" id="coupangMealUrl" class="firebase-settings-input" style="height: 34px; font-size: 0.75rem;" placeholder="https://link.coupang.com/a/meal...">
+          </div>
+          <div>
+            <span style="font-size: 0.72rem; color: #f59e0b; font-weight: 700;">🏃 빵/간식 링크 (베이커리/디저트/스낵)</span>
+            <input type="text" id="coupangSnackUrl" class="firebase-settings-input" style="height: 34px; font-size: 0.75rem;" placeholder="https://link.coupang.com/a/snack...">
+          </div>
+          <div>
+            <span style="font-size: 0.72rem; color: #f59e0b; font-weight: 700;">👑 소원권/기본 링크 (인기 선물/베스트)</span>
+            <input type="text" id="coupangWishUrl" class="firebase-settings-input" style="height: 34px; font-size: 0.75rem;" placeholder="https://link.coupang.com/a/wish...">
+          </div>
+        </div>
+        <span style="font-size: 0.68rem; color: #94a3b8; margin-top: 6px; display: block; line-height: 1.3;">* 내기 종목 선택 시 하단 배너 및 승리 창의 배너 문구와 링크가 해당 종목에 맞게 실시간 전환됩니다. (미입력 시 기본 쿠팡 링크 자동 연결)</span>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-label">Firebase Realtime DB 키 (온라인 대전용)</label>
+        <textarea class="firebase-settings-input" id="firebaseConfigInput" placeholder='{"apiKey": "...", "databaseURL": "..."}'></textarea>
+      </div>
+      
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn btn-primary" id="btnSaveSettings">설정 저장</button>
+        <button class="btn" id="btnCloseSettings">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    // ----------------------------------------------------
+    // Sound FX Synthesis
+    // ----------------------------------------------------
+    let soundEnabled = true;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new AudioContext();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    ['touchstart', 'pointerdown', 'click'].forEach(evt => {
+      window.addEventListener(evt, initAudio, { once: true, passive: true });
+    });
+
+    // Crisp Baduk Stone Sound (딱!)
+    function playStoneSound() {
+      if (!soundEnabled) return;
+      initAudio();
+      try {
+        const now = audioCtx.currentTime;
+
+        // Sharp crack
+        const osc1 = audioCtx.createOscillator();
+        const g1 = audioCtx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(3200, now);
+        osc1.frequency.exponentialRampToValueAtTime(1400, now + 0.03);
+        g1.gain.setValueAtTime(0.9, now);
+        g1.gain.exponentialRampToValueAtTime(0.01, now + 0.035);
+        osc1.connect(g1);
+        g1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.04);
+
+        // Solid wood resonance
+        const osc2 = audioCtx.createOscillator();
+        const g2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(950, now);
+        osc2.frequency.exponentialRampToValueAtTime(250, now + 0.055);
+        g2.gain.setValueAtTime(0.8, now);
+        g2.gain.exponentialRampToValueAtTime(0.01, now + 0.06);
+        osc2.connect(g2);
+        g2.connect(audioCtx.destination);
+        osc2.start(now);
+        osc2.stop(now + 0.065);
+      } catch (e) {}
+    }
+
+    function playErrorSound() {
+      if (!soundEnabled) return;
+      initAudio();
+      try {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(130, now);
+        osc.frequency.setValueAtTime(100, now + 0.08);
+        g.gain.setValueAtTime(0.4, now);
+        g.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.16);
+      } catch (e) {}
+    }
+
+    function playWinSound() {
+      if (!soundEnabled) return;
+      initAudio();
+      try {
+        const now = audioCtx.currentTime;
+        [440, 554, 659, 880].forEach((freq, i) => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.2, now + i * 0.1);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.25);
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start(now + i * 0.1);
+          osc.stop(now + i * 0.1 + 0.28);
+        });
+      } catch (e) {}
+    }
+
+    document.getElementById('btnSound').addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      document.getElementById('soundIcon').setAttribute('data-lucide', soundEnabled ? 'volume-2' : 'volume-x');
+      lucide.createIcons();
+    });
+
+    // ----------------------------------------------------
+    // Toast Notification
+    // ----------------------------------------------------
+    function showToast(message) {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerHTML = `<i data-lucide="alert-circle" style="width: 16px; height: 16px;"></i><span>${message}</span>`;
+      container.appendChild(toast);
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.remove();
+      }, 2500);
+    }
+
+    // ----------------------------------------------------
+    // Game Core State
+    // ----------------------------------------------------
+    const BOARD_SIZE = 15;
+    let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+    let currentTurn = 1; // 1: Black, 2: White
+    let lastMove = null;
+    let forbiddenFlash = null;
+    let winningStones = [];
+    let isGameOver = false;
+    let selectedBet = "☕ 커피 쏘기";
+    let moveCount = 0;
+    let rule33 = "black_only"; // "black_only": 흑 3·3 금수 적용, "free": 3·3 자유(일반 오목)
+
+    // Online State
+    let isOnlineMode = false;
+    let myRole = 0;
+    let currentRoomId = null;
+    let dbRef = null;
+
+    const canvas = document.getElementById('omokCanvas');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+        let margin = 0;
+    let cellSize = 0;
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
+      const size = rect.width > 0 ? rect.width : (parentWidth > 0 ? parentWidth : 450);
+
+      canvas.width = size * dpr;
+      canvas.height = size * dpr;
+      ctx.scale(dpr, dpr);
+
+      margin = size * 0.052;
+      cellSize = (size - margin * 2) / (BOARD_SIZE - 1);
+      drawBoard();
+    }
+
+    function centerBoardScroll() {
+      const scrollArea = document.getElementById('boardScrollArea');
+      const container = document.getElementById('boardContainer');
+      if (scrollArea && container) {
+        // Center both Horizontally and Vertically (Tengen / Center focus)
+        scrollArea.scrollLeft = (container.scrollWidth - scrollArea.clientWidth) / 2;
+        scrollArea.scrollTop = (container.scrollHeight - scrollArea.clientHeight) / 2;
+      }
+    }
+
+    window.addEventListener('resize', () => { resizeCanvas(); centerBoardScroll(); });
+    window.addEventListener('orientationchange', () => { resizeCanvas(); centerBoardScroll(); });
+    window.addEventListener('DOMContentLoaded', () => { resizeCanvas(); centerBoardScroll(); });
+    window.addEventListener('load', () => { resizeCanvas(); centerBoardScroll(); });
+
+    // ----------------------------------------------------
+    // 3·3 금수 판정 로직
+    // ----------------------------------------------------
+    function checkOpenThreeInDirection(boardState, r, c, player, dr, dc) {
+      const line = [];
+      const centerIdx = 5;
+
+      for (let offset = -5; offset <= 5; offset++) {
+        const nr = r + offset * dr;
+        const nc = c + offset * dc;
+        if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+          line.push(boardState[nr][nc]);
+        } else {
+          line.push(-1);
+        }
+      }
+
+      for (let i = 0; i <= line.length - 6; i++) {
+        if (!(i <= centerIdx && centerIdx <= i + 5)) continue;
+
+        const window = line.slice(i, i + 6);
+        if (window[0] === 0 && window[5] === 0) {
+          const inner = window.slice(1, 5);
+          const playerCount = inner.filter(v => v === player).length;
+          const emptyCount = inner.filter(v => v === 0).length;
+
+          if (playerCount === 3 && emptyCount === 1) {
+            const relIdx = centerIdx - i;
+            if (relIdx >= 1 && relIdx <= 4 && window[relIdx] === player) {
+              const leftSafe = (i === 0 || line[i - 1] !== player);
+              const rightSafe = (i + 6 >= line.length || line[i + 6] !== player);
+              if (leftSafe && rightSafe) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    }
+
+    function isDoubleThree(r, c, player) {
+      board[r][c] = player;
+
+      if (checkWin(r, c, player)) {
+        board[r][c] = 0;
+        return false;
+      }
+
+      let openThreeCount = 0;
+      const directions = [
+        [0, 1],   // 가로
+        [1, 0],   // 세로
+        [1, 1],   // 대각선 \
+        [1, -1]   // 대각선 /
+      ];
+
+      for (let [dr, dc] of directions) {
+        if (checkOpenThreeInDirection(board, r, c, player, dr, dc)) {
+          openThreeCount++;
+        }
+      }
+
+      board[r][c] = 0;
+      return openThreeCount >= 2;
+    }
+
+    function isForbidden(r, c, player) {
+      if (rule33 === "free") return false; // 3·3 자유(금수 없음) 모드
+      if (player === 1) return isDoubleThree(r, c, player);
+      return false;
+    }
+
+    // ----------------------------------------------------
+    // Board Drawing
+    // ----------------------------------------------------
+        function drawBoard() {
+      const rect = canvas.getBoundingClientRect();
+      const parentWidth = canvas.parentElement ? canvas.parentElement.clientWidth : 0;
+      const size = rect.width > 0 ? rect.width : (parentWidth > 0 ? parentWidth : (canvas.width / dpr || 450));
+
+      ctx.clearRect(0, 0, size, size);
+
+      // Grid Lines (100% Perfect Square)
+      ctx.strokeStyle = '#6b4423';
+      ctx.lineWidth = 1.2;
+
+      for (let i = 0; i < BOARD_SIZE; i++) {
+        const pos = margin + i * cellSize;
+
+        // Horizontal line
+        ctx.beginPath();
+        ctx.moveTo(margin, pos);
+        ctx.lineTo(size - margin, pos);
+        ctx.stroke();
+
+        // Vertical line
+        ctx.beginPath();
+        ctx.moveTo(pos, margin);
+        ctx.lineTo(pos, size - margin);
+        ctx.stroke();
+      }
+
+      // Star Points
+      const starPoints = [3, 7, 11];
+      ctx.fillStyle = '#6b4423';
+      for (let r of starPoints) {
+        for (let c of starPoints) {
+          ctx.beginPath();
+          ctx.arc(margin + c * cellSize, margin + r * cellSize, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Stones
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== 0) {
+            drawStone(r, c, board[r][c]);
+          }
+        }
+      }
+
+      // Winning 5 Stones Highlight
+      if (winningStones.length > 0) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3.5;
+        for (let stone of winningStones) {
+          const x = margin + stone.c * cellSize;
+          const y = margin + stone.r * cellSize;
+          ctx.beginPath();
+          ctx.arc(x, y, cellSize * 0.46, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Last Move Golden Dot
+      if (lastMove) {
+        const x = margin + lastMove.c * cellSize;
+        const y = margin + lastMove.r * cellSize;
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Forbidden Spot Flash
+      if (forbiddenFlash) {
+        const x = margin + forbiddenFlash.c * cellSize;
+        const y = margin + forbiddenFlash.r * cellSize;
+        const offset = cellSize * 0.3;
+        ctx.save();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(x - offset, y - offset);
+        ctx.lineTo(x + offset, y + offset);
+        ctx.moveTo(x + offset, y - offset);
+        ctx.lineTo(x - offset, y + offset);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawStone(r, c, type) {
+      const x = margin + c * cellSize;
+      const y = margin + r * cellSize;
+      const radius = cellSize * 0.44;
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 3;
+
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+
+      const grad = ctx.createRadialGradient(
+        x - radius * 0.35, y - radius * 0.35, radius * 0.1,
+        x, y, radius
+      );
+
+      if (type === 1) { // Black
+        grad.addColorStop(0, '#555555');
+        grad.addColorStop(0.6, '#18181b');
+        grad.addColorStop(1, '#09090b');
+      } else { // White
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.65, '#f1f5f9');
+        grad.addColorStop(1, '#cbd5e1');
+      }
+
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    let lastTapTime = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchMoved = false;
+
+    function processTap(clientX, clientY) {
+      const now = Date.now();
+      if (now - lastTapTime < 250) return; // Debounce rapid taps
+      lastTapTime = now;
+
+      if (isGameOver) return;
+      if (isOnlineMode && myRole !== 0 && currentTurn !== myRole) {
+        showToast("상대방 차례입니다! 기다려주세요.");
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const clickX = clientX - rect.left;
+      const clickY = clientY - rect.top;
+
+      const c = Math.round((clickX - margin) / cellSize);
+      const r = Math.round((clickY - margin) / cellSize);
+
+      if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+        if (board[r][c] === 0) {
+          if (isForbidden(r, c, currentTurn)) {
+            playErrorSound();
+            forbiddenFlash = { r, c };
+            drawBoard();
+            showToast("3/3 금지입니다. ^^");
+            setTimeout(() => {
+              forbiddenFlash = null;
+              drawBoard();
+            }, 700);
+            return;
+          }
+
+          executeMove(r, c, currentTurn);
+        }
+      }
+    }
+
+    // Native Mobile Touch Engine (Accurate hardware coordinates + free 2D scroll)
+    canvas.addEventListener('touchstart', (e) => {
+      initAudio();
+      if (e.touches && e.touches.length > 0) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchMoved = false;
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length > 0) {
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
+        if (Math.hypot(dx, dy) > 8) {
+          touchMoved = true;
+        }
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchend', (e) => {
+      if (!touchMoved) {
+        // Clean tap: Place stone at exact touch location
+        processTap(touchStartX, touchStartY);
+      }
+    });
+
+    // Desktop Mouse Click
+    canvas.addEventListener('click', (e) => {
+      if (Date.now() - lastTapTime > 300) {
+        processTap(e.clientX, e.clientY);
+      }
+    });
+
+    function executeMove(r, c, player) {
+      if (moveCount === 0) {
+        recordGlobalGameStart(selectedBet);
+      }
+      lastMoveTime = Date.now();
+      board[r][c] = player;
+      lastMove = { r, c };
+      moveCount++;
+      playStoneSound();
+
+      const winResult = checkWin(r, c, player);
+      if (winResult) {
+        winningStones = winResult;
+        isGameOver = true;
+        drawBoard();
+        playWinSound();
+        showWinner(player);
+
+        if (isOnlineMode && dbRef) {
+          dbRef.update({
+            lastMove: { r, c, player },
+            currentTurn: player === 1 ? 2 : 1,
+            winner: player,
+            winningStones: winResult
+          });
+        }
+        return;
+      }
+
+      currentTurn = player === 1 ? 2 : 1;
+      updateUI();
+      drawBoard();
+
+      if (isOnlineMode && dbRef) {
+        dbRef.update({
+          lastMove: { r, c, player },
+          currentTurn: currentTurn
+        });
+      }
+    }
+
+    function checkWin(r, c, player) {
+      const directions = [
+        [[0, 1], [0, -1]],
+        [[1, 0], [-1, 0]],
+        [[1, 1], [-1, -1]],
+        [[1, -1], [-1, 1]]
+      ];
+
+      for (let dir of directions) {
+        let line = [{ r, c }];
+        for (let [dr, dc] of dir) {
+          let nr = r + dr;
+          let nc = c + dc;
+          while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+            line.push({ r: nr, c: nc });
+            nr += dr;
+            nc += dc;
+          }
+        }
+        if (line.length >= 5) {
+          return line;
+        }
+      }
+      return null;
+    }
+
+    // ----------------------------------------------------
+    // UI Helpers
+    // ----------------------------------------------------
+    function updateUI() {
+      const stoneIcon = document.getElementById('currentStoneIcon');
+      const turnText = document.getElementById('turnText');
+      const turnDot = document.getElementById('turnDot');
+      const subStatusText = document.getElementById('subStatusText');
+
+      const ruleTag = document.getElementById('ruleTagToggle');
+      if (ruleTag) {
+        if (rule33 === "black_only") {
+          ruleTag.textContent = "3·3 금수 🔄";
+          ruleTag.className = "rule-tag";
+        } else {
+          ruleTag.textContent = "3·3 자유 🔄";
+          ruleTag.className = "rule-tag free";
+        }
+      }
+
+      if (currentTurn === 1) {
+        stoneIcon.className = 'stone-icon black';
+        turnText.textContent = '흑돌 차례';
+        turnDot.style.background = '#111';
+        subStatusText.textContent = rule33 === "black_only" ? "흑돌은 3·3(활삼 2개)을 둘 수 없습니다." : "3·3 자유 모드: 제한 없이 착수 가능합니다.";
+      } else {
+        stoneIcon.className = 'stone-icon white';
+        turnText.textContent = '백돌 차례';
+        turnDot.style.background = '#fff';
+        subStatusText.textContent = "빈 곳을 터치하여 돌을 놓으세요.";
+      }
+
+      if (isOnlineMode && myRole !== 0) {
+        if (currentTurn === myRole) {
+          subStatusText.textContent = "내 차례입니다! 착수하세요.";
+        } else {
+          subStatusText.textContent = "상대방이 생각 중입니다... ⏳";
+        }
+      }
+    }
+
+    function resetGame() {
+      board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+      currentTurn = 1;
+      lastMove = null;
+      forbiddenFlash = null;
+      winningStones = [];
+      isGameOver = false;
+      moveCount = 0;
+      updateUI();
+      drawBoard();
+      document.getElementById('modalWinner').classList.remove('active');
+    }
+
+    const btnRestart = document.getElementById('btnRestart');
+    if (btnRestart) {
+      btnRestart.addEventListener('click', () => {
+        if (confirm("바둑판을 초기화하고 새로 시작할까요?")) {
+          resetGame();
+          if (isOnlineMode && dbRef) {
+            dbRef.set({
+              board: board,
+              currentTurn: 1,
+              bet: selectedBet,
+              rule33: rule33,
+              resetCount: Date.now()
+            });
+          }
+        }
+      });
+    }
+
+    // ----------------------------------------------------
+    // Winner Modal & Sharing
+    // ----------------------------------------------------
+    function showWinner(player) {
+      const modal = document.getElementById('modalWinner');
+      const title = document.getElementById('winnerTitle');
+      const turns = document.getElementById('winnerTurns');
+      const prize = document.getElementById('winnerBetPrize');
+
+      const winnerName = player === 1 ? '흑돌' : '백돌';
+      title.textContent = `${winnerName} 승리! 🎉`;
+      turns.textContent = `총 ${moveCount}수 만에 승부를 결정지었습니다!`;
+      prize.textContent = `${selectedBet} 획득 확정!`;
+
+      recordGlobalGameWin(player, selectedBet);
+
+      modal.classList.add('active');
+    }
+
+    document.getElementById('btnRematch').addEventListener('click', () => {
+      resetGame();
+      if (isOnlineMode && dbRef) {
+        dbRef.set({
+          board: board,
+          currentTurn: 1,
+          bet: selectedBet,
+          rule33: rule33,
+          resetCount: Date.now()
+        });
+      }
+    });
+
+    document.getElementById('btnCloseWinner').addEventListener('click', () => {
+      document.getElementById('modalWinner').classList.remove('active');
+    });
+
+    document.getElementById('btnShareWinner').addEventListener('click', () => {
+      const winnerName = currentTurn === 1 ? '흑돌' : '백돌';
+      const text = `[한판붙자! 오목 ⚔️]\n${winnerName}이(가) ${moveCount}수 만에 승리하여 [${selectedBet}]을(를) 쟁취했습니다!\n패배자의 복수전 대기 중... 바로 도전하기 👉 ${window.location.href}`;
+      
+      if (navigator.share) {
+        navigator.share({ title: '오목 대결 결과', text: text, url: window.location.href }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast("승리 멘트와 링크가 복사되었습니다!");
+        });
+      }
+    });
+
+    // ----------------------------------------------------
+    // Challenge Modal
+    // ----------------------------------------------------
+    const modalChallenge = document.getElementById('modalChallenge');
+    const roomLinkText = document.getElementById('roomLinkText');
+
+    // ----------------------------------------------------
+    // Rule 3·3 Selection & Toggle
+    // ----------------------------------------------------
+    const ruleTagToggle = document.getElementById('ruleTagToggle');
+    const btnRule33Prohibit = document.getElementById('btnRule33Prohibit');
+    const btnRule33Free = document.getElementById('btnRule33Free');
+
+    function setRule33(newRule, syncOnline = true) {
+      rule33 = newRule;
+      if (btnRule33Prohibit && btnRule33Free) {
+        if (rule33 === "black_only") {
+          btnRule33Prohibit.classList.add('selected');
+          btnRule33Free.classList.remove('selected');
+        } else {
+          btnRule33Free.classList.add('selected');
+          btnRule33Prohibit.classList.remove('selected');
+        }
+      }
+      updateUI();
+      updateChallengeLink();
+
+      if (syncOnline && isOnlineMode && dbRef) {
+        dbRef.update({ rule33: rule33 });
+      }
+    }
+
+    if (ruleTagToggle) {
+      ruleTagToggle.addEventListener('click', () => {
+        const nextRule = rule33 === "black_only" ? "free" : "black_only";
+        setRule33(nextRule, true);
+        showToast(nextRule === "black_only" ? "룰 변경: 3·3 금수 적용" : "룰 변경: 3·3 자유(금수 없음)");
+      });
+    }
+
+    if (btnRule33Prohibit) {
+      btnRule33Prohibit.addEventListener('click', () => {
+        setRule33("black_only", true);
+      });
+    }
+
+    if (btnRule33Free) {
+      btnRule33Free.addEventListener('click', () => {
+        setRule33("free", true);
+      });
+    }
+
+    function updateChallengeLink() {
+      if (!currentRoomId) {
+        currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
+      }
+      const challengeUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&bet=${encodeURIComponent(selectedBet)}&rule=${rule33}`;
+      if (roomLinkText) roomLinkText.textContent = challengeUrl;
+      return challengeUrl;
+    }
+
+    const btnShareChallenge = document.getElementById('btnShareChallenge');
+    if (btnShareChallenge) {
+      btnShareChallenge.addEventListener('click', () => {
+        updateChallengeLink();
+        modalChallenge.classList.add('active');
+      });
+    }
+
+    document.querySelectorAll('.bet-options .bet-opt-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.bet-options .bet-opt-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedBet = btn.getAttribute('data-bet');
+        document.getElementById('betName').textContent = selectedBet;
+        updateCoupangAds(selectedBet);
+        updateChallengeLink();
+      });
+    });
+
+    document.getElementById('btnCopyLink').addEventListener('click', () => {
+      const challengeUrl = updateChallengeLink();
+      const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
+      const shareText = `[⚔️ 오목 도전장이 도착했습니다!]
+"나랑 [${selectedBet}] 내기 오목 한판 붙자!" (${ruleDesc})
+설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
+
+      if (navigator.share) {
+        navigator.share({ title: '한판붙자 오목 도전장', text: shareText, url: challengeUrl }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(shareText).then(() => {
+          showToast("도전장 링크가 복사되었습니다!");
+          modalChallenge.classList.remove('active');
+        });
+      }
+    });
+
+    document.getElementById('btnShareThreads').addEventListener('click', () => {
+      const challengeUrl = updateChallengeLink();
+      const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
+      const text = `나랑 [${selectedBet}] 내기 오목 한판 붙을 사람? ⚔️ (${ruleDesc})
+설치 없이 링크로 1초 만에 바로 시작 👉 ${challengeUrl}`;
+      const threadsUrl = `https://www.threads.net/intent/post?text=${encodeURIComponent(text)}`;
+      window.open(threadsUrl, '_blank');
+    });
+
+    document.getElementById('btnCloseChallenge').addEventListener('click', () => {
+      modalChallenge.classList.remove('active');
+    });
+
+    // ----------------------------------------------------
+
+    // ----------------------------------------------------
+    // Game Statistics Tracking (Local + Global Firebase)
+    // ----------------------------------------------------
+    const btnStats = document.getElementById('btnStats');
+    const modalStats = document.getElementById('modalStats');
+    const btnCloseStats = document.getElementById('btnCloseStats');
+
+    // Local Storage Stats
+    function getLocalStats() {
+      try {
+        const raw = localStorage.getItem('omok_local_stats');
+        return raw ? JSON.parse(raw) : { total: 0, blackWins: 0, whiteWins: 0 };
+      } catch (e) {
+        return { total: 0, blackWins: 0, whiteWins: 0 };
+      }
+    }
+
+    function recordLocalGame(winner) {
+      const stats = getLocalStats();
+      stats.total = (stats.total || 0) + 1;
+      if (winner === 1) stats.blackWins = (stats.blackWins || 0) + 1;
+      if (winner === 2) stats.whiteWins = (stats.whiteWins || 0) + 1;
+      localStorage.setItem('omok_local_stats', JSON.stringify(stats));
+      renderLocalStats();
+    }
+
+    function renderLocalStats() {
+      const stats = getLocalStats();
+      const elTotal = document.getElementById('statMyTotal');
+      const elBlack = document.getElementById('statMyBlackWin');
+      const elWhite = document.getElementById('statMyWhiteWin');
+      if (elTotal) elTotal.textContent = stats.total || 0;
+      if (elBlack) elBlack.textContent = stats.blackWins || 0;
+      if (elWhite) elWhite.textContent = stats.whiteWins || 0;
+    }
+
+    // Global Stats via Firebase (or fallback simulation if offline)
+    let globalStats = {
+      totalGames: 0,
+      finishedGames: 0,
+      bets: { coffee: 0, meal: 0, snack: 0, wish: 0 }
+    };
+
+    function recordGlobalGameStart(bet) {
+      // Record locally as well
+      const stats = getLocalStats();
+      // If Firebase connected, atomically increment global stats
+      if (isOnlineMode && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+        try {
+          const statsRef = firebase.database().ref('omok_global_stats');
+          statsRef.child('totalGames').transaction(curr => (curr || 0) + 1);
+          
+          let betKey = 'coffee';
+          if (bet.includes('점심') || bet.includes('밥')) betKey = 'meal';
+          else if (bet.includes('빵') || bet.includes('간식')) betKey = 'snack';
+          else if (bet.includes('소원')) betKey = 'wish';
+
+          statsRef.child('bets/' + betKey).transaction(curr => (curr || 0) + 1);
+        } catch (e) {
+          console.error("Firebase global stats error:", e);
+        }
+      }
+    }
+
+    function recordGlobalGameWin(winner, bet) {
+      recordLocalGame(winner);
+
+      if (isOnlineMode && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+        try {
+          const statsRef = firebase.database().ref('omok_global_stats');
+          statsRef.child('finishedGames').transaction(curr => (curr || 0) + 1);
+        } catch (e) {
+          console.error("Firebase win stats error:", e);
+        }
+      }
+
+      // Also support Google Analytics 4 event if gtag exists
+      if (typeof gtag === 'function') {
+        gtag('event', 'game_finish', {
+          winner: winner === 1 ? 'black' : 'white',
+          bet: bet,
+          moves: moveCount
+        });
+      }
+    }
+
+    function listenGlobalStats() {
+      if (isOnlineMode && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+        try {
+          const statsRef = firebase.database().ref('omok_global_stats');
+          statsRef.on('value', snapshot => {
+            const data = snapshot.val();
+            if (data) {
+              globalStats = {
+                totalGames: data.totalGames || 0,
+                finishedGames: data.finishedGames || 0,
+                bets: data.bets || { coffee: 0, meal: 0, snack: 0, wish: 0 }
+              };
+              renderGlobalStats();
+            }
+          });
+          const syncLabel = document.getElementById('statsGlobalSync');
+          if (syncLabel) syncLabel.textContent = "🟢 실시간 동기화 완료";
+        } catch (e) {
+          console.error("Firebase listen error:", e);
+        }
+      } else {
+        const syncLabel = document.getElementById('statsGlobalSync');
+        if (syncLabel) syncLabel.textContent = "⚙️ Firebase 연결 시 전세계 집계";
+        // Show local counts as baseline
+        const local = getLocalStats();
+        globalStats.totalGames = local.total || 0;
+        globalStats.finishedGames = (local.blackWins || 0) + (local.whiteWins || 0);
+        renderGlobalStats();
+      }
+    }
+
+    function renderGlobalStats() {
+      const elTotal = document.getElementById('statTotalGames');
+      const elFinish = document.getElementById('statFinishedGames');
+      const elCoffee = document.getElementById('statBetCoffee');
+      const elMeal = document.getElementById('statBetMeal');
+      const elSnack = document.getElementById('statBetSnack');
+      const elWish = document.getElementById('statBetWish');
+
+      if (elTotal) elTotal.textContent = (globalStats.totalGames || 0) + '판';
+      if (elFinish) elFinish.textContent = (globalStats.finishedGames || 0) + '회';
+      if (elCoffee) elCoffee.textContent = (globalStats.bets?.coffee || 0) + '회';
+      if (elMeal) elMeal.textContent = (globalStats.bets?.meal || 0) + '회';
+      if (elSnack) elSnack.textContent = (globalStats.bets?.snack || 0) + '회';
+      if (elWish) elWish.textContent = (globalStats.bets?.wish || 0) + '회';
+    }
+
+    if (btnStats) {
+      btnStats.addEventListener('click', () => {
+        renderLocalStats();
+        listenGlobalStats();
+        modalStats.classList.add('active');
+      });
+    }
+
+    if (btnCloseStats) {
+      btnCloseStats.addEventListener('click', () => {
+        modalStats.classList.remove('active');
+      });
+    }
+
+    // Settings Modal & Coupang Dynamic Affiliate Routing
+    // ----------------------------------------------------
+    const btnSettings = document.getElementById('btnSettings');
+    const modalSettings = document.getElementById('modalSettings');
+    const firebaseInput = document.getElementById('firebaseConfigInput');
+
+    const coupangCoffeeUrl = document.getElementById('coupangCoffeeUrl');
+    const coupangMealUrl = document.getElementById('coupangMealUrl');
+    const coupangSnackUrl = document.getElementById('coupangSnackUrl');
+    const coupangWishUrl = document.getElementById('coupangWishUrl');
+
+    const coupangBannerLink = document.getElementById('coupangBannerLink');
+    const coupangBannerText = document.getElementById('coupangBannerText');
+    const coupangWinnerLink = document.getElementById('coupangWinnerLink');
+    const coupangWinnerText = document.getElementById('coupangWinnerText');
+
+    // Default Coupang search/category links for fallback (all 100% compliant with Coupang Partners)
+    const DEFAULT_COUPANG_LINKS = {
+      coffee: "https://www.coupang.com/np/search?component=&q=%EC%BB%A4%ED%94%BC+%EA%B8%B0%ED%94%84%ED%8B%B0%EC%BD%98",
+      meal: "https://www.coupang.com/np/search?component=&q=%EC%99%B8%EC%8B%9D%EC%83%81%ED%92%88%EA%B8%8C+%EB%B0%B0%EB%AF%BC%EC%83%81%ED%92%88%EA%B8%8C",
+      snack: "https://www.coupang.com/np/search?component=&q=%EB%B2%A0%EC%9D%B4%EC%BB%A4%EB%A6%AC+%EB%94%94%EC%A0%80%ED%8A%B8+%EA%B8%B0%ED%94%84%ED%8B%B0%EC%BD%98",
+      wish: "https://www.coupang.com"
+    };
+
+    let coupangPartnersLinks = {
+      coffee: localStorage.getItem('omok_cp_coffee') || "",
+      meal: localStorage.getItem('omok_cp_meal') || "",
+      snack: localStorage.getItem('omok_cp_snack') || "",
+      wish: localStorage.getItem('omok_cp_wish') || localStorage.getItem('omok_coupang_url') || ""
+    };
+
+    if (coupangCoffeeUrl) coupangCoffeeUrl.value = coupangPartnersLinks.coffee;
+    if (coupangMealUrl) coupangMealUrl.value = coupangPartnersLinks.meal;
+    if (coupangSnackUrl) coupangSnackUrl.value = coupangPartnersLinks.snack;
+    if (coupangWishUrl) coupangWishUrl.value = coupangPartnersLinks.wish;
+
+    function updateCoupangAds(bet) {
+      let bannerText = "☕ 패배자 커피 쏘기 & 당일 배송 기프티콘 모음";
+      let winnerBtnText = "패배자 벌칙 상품(커피 기프티콘) 쏘러 가기";
+      let targetUrl = coupangPartnersLinks.coffee || coupangPartnersLinks.wish || DEFAULT_COUPANG_LINKS.coffee;
+
+      if (bet.includes("점심") || bet.includes("밥")) {
+        bannerText = "🍱 패배자 점심 쏘기 (외식/배민 상품권 & 밀키트 모음)";
+        winnerBtnText = "🍱 패배자 점심 쏘기 (외식·배민 상품권) 결제하러 가기";
+        targetUrl = coupangPartnersLinks.meal || coupangPartnersLinks.wish || DEFAULT_COUPANG_LINKS.meal;
+      } else if (bet.includes("빵") || bet.includes("간식")) {
+        bannerText = "🏃 패배자 간식 쏘기 (베이커리·도넛·디저트 쿠폰)";
+        winnerBtnText = "🏃 패배자 간식 쏘기 (베이커리/디저트 쿠폰) 사러 가기";
+        targetUrl = coupangPartnersLinks.snack || coupangPartnersLinks.wish || DEFAULT_COUPANG_LINKS.snack;
+      } else if (bet.includes("소원")) {
+        bannerText = "👑 승자를 위한 인기 랭킹 선물 & 위시리스트 구경하기";
+        winnerBtnText = "👑 승자를 위한 인기 위시리스트 선물 사러 가기";
+        targetUrl = coupangPartnersLinks.wish || DEFAULT_COUPANG_LINKS.wish;
+      }
+
+      if (coupangBannerText) coupangBannerText.textContent = bannerText;
+      if (coupangBannerLink) coupangBannerLink.href = targetUrl;
+      if (coupangWinnerText) coupangWinnerText.textContent = winnerBtnText;
+      if (coupangWinnerLink) coupangWinnerLink.href = targetUrl;
+    }
+
+    const savedConfig = localStorage.getItem('omok_firebase_config');
+    if (savedConfig) {
+      firebaseInput.value = savedConfig;
+      initFirebase(JSON.parse(savedConfig));
+    }
+
+    btnSettings.addEventListener('click', () => {
+      modalSettings.classList.add('active');
+    });
+
+    document.getElementById('btnCloseSettings').addEventListener('click', () => {
+      modalSettings.classList.remove('active');
+    });
+
+    document.getElementById('btnSaveSettings').addEventListener('click', () => {
+      coupangPartnersLinks.coffee = coupangCoffeeUrl.value.trim();
+      coupangPartnersLinks.meal = coupangMealUrl.value.trim();
+      coupangPartnersLinks.snack = coupangSnackUrl.value.trim();
+      coupangPartnersLinks.wish = coupangWishUrl.value.trim();
+
+      localStorage.setItem('omok_cp_coffee', coupangPartnersLinks.coffee);
+      localStorage.setItem('omok_cp_meal', coupangPartnersLinks.meal);
+      localStorage.setItem('omok_cp_snack', coupangPartnersLinks.snack);
+      localStorage.setItem('omok_cp_wish', coupangPartnersLinks.wish);
+      localStorage.setItem('omok_coupang_url', coupangPartnersLinks.wish || coupangPartnersLinks.coffee || "");
+
+      updateCoupangAds(selectedBet);
+
+      if (firebaseInput.value.trim()) {
+        try {
+          const config = JSON.parse(firebaseInput.value);
+          localStorage.setItem('omok_firebase_config', JSON.stringify(config));
+          initFirebase(config);
+        } catch (err) {
+          alert("Firebase Config JSON 형식이 올바르지 않습니다.");
+          return;
+        }
+      }
+
+      updateUI();
+      modalSettings.classList.remove('active');
+      showToast("설정이 저장되었습니다.");
+    });
+
+    function initFirebase(config) {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(config);
+      }
+      isOnlineMode = true;
+
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      const betParam = params.get('bet');
+      const ruleParam = params.get('rule');
+
+      if (betParam) {
+        selectedBet = decodeURIComponent(betParam);
+        document.getElementById('betName').textContent = selectedBet;
+        updateCoupangAds(selectedBet);
+      }
+
+      if (ruleParam) {
+        rule33 = ruleParam;
+        setRule33(ruleParam, false);
+      }
+
+      if (roomParam) {
+        currentRoomId = roomParam;
+        myRole = 2; // Guest
+        document.getElementById('modeRole').textContent = "온라인 1:1 (백돌 - 도전자)";
+        connectToRoom(currentRoomId);
+      } else {
+        currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
+        myRole = 1; // Host
+        document.getElementById('modeRole').textContent = "온라인 1:1 (흑돌 - 방장)";
+        connectToRoom(currentRoomId);
+      }
+    }
+
+    function connectToRoom(roomId) {
+      dbRef = firebase.database().ref('omok_rooms/' + roomId);
+
+      dbRef.on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        if (data.lastMove) {
+          const { r, c, player } = data.lastMove;
+          if (board[r][c] === 0) {
+            board[r][c] = player;
+            lastMove = { r, c };
+            playStoneSound();
+          }
+        }
+
+        if (data.rule33 && data.rule33 !== rule33) {
+          rule33 = data.rule33;
+          setRule33(rule33, false);
+        }
+
+        if (data.currentTurn) {
+          currentTurn = data.currentTurn;
+          updateUI();
+          drawBoard();
+        }
+
+        if (data.winner) {
+          isGameOver = true;
+          winningStones = data.winningStones || [];
+          drawBoard();
+          showWinner(data.winner);
+        }
+
+        if (data.resetCount && data.board) {
+          board = data.board;
+          currentTurn = 1;
+          lastMove = null;
+          winningStones = [];
+          isGameOver = false;
+          drawBoard();
+          updateUI();
+          document.getElementById('modalWinner').classList.remove('active');
+        }
+      });
+    }
+
+    // Check URL parameters for offline/single-player test mode as well
+    const urlParams = new URLSearchParams(window.location.search);
+    const initialBet = urlParams.get('bet');
+    const initialRule = urlParams.get('rule');
+    if (initialBet) {
+      selectedBet = decodeURIComponent(initialBet);
+      document.getElementById('betName').textContent = selectedBet;
+    }
+    if (initialRule) {
+      setRule33(initialRule, false);
+    } else {
+      setRule33(rule33, false);
+    }
+    updateCoupangAds(selectedBet);
+
+    // Initial Start
+    renderLocalStats();
+    listenGlobalStats();
+    resizeCanvas();
+    updateUI();
+
+    // Auto-center scroll on load
+    function centerBoardScroll() {
+      const scrollArea = document.getElementById('boardScrollArea');
+      const container = document.getElementById('boardContainer');
+      if (scrollArea && container) {
+        scrollArea.scrollLeft = (container.scrollWidth - scrollArea.clientWidth) / 2;
+      }
+    }
+    window.addEventListener('load', centerBoardScroll);
+    setTimeout(centerBoardScroll, 100);
+
+  </script>
+</body>
+</html>
