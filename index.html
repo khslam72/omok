@@ -6,7 +6,7 @@
   <title>한판붙자! 1:1 내기 오목</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="한판붙자 오목">
-  <meta property="og:title" content="⚔️ 내기 오목 한판 하실래요?">
+  <meta property="og:title" content="⚔️ 우리 오목 한판 어때요?">
   <meta property="og:description" content="설치 없이 바로 대결! 이긴 사람이 커피 쏘기 ☕">
   <meta property="og:image" content="https://khslam72.github.io/omok/og.png">
   <meta property="og:image:width" content="800">
@@ -733,9 +733,16 @@
   <div class="modal-overlay" id="modalChallenge">
     <div class="modal">
       <h2>⚔️ 오목 도전장 보내기</h2>
-      <p>내기 종목과 3·3 룰을 직접 선택하여 도전하세요!</p>
+      <p>어떤 오목을 할지 정하고 친구를 초대하세요!</p>
 
-      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">1. 내기 종목 선택</div>
+      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">1. 오목 종류</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+        <button class="bet-opt-btn selected" id="btnTypeBet" data-type="bet">⚔️ 내기 오목</button>
+        <button class="bet-opt-btn" id="btnTypeFriendly" data-type="friendly">🤝 친목 오목</button>
+      </div>
+
+      <div id="betSection">
+      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">내기 종목 선택</div>
 
       <div class="bet-options">
         <button class="bet-opt-btn selected" data-bet="☕ 커피 쏘기">
@@ -750,6 +757,7 @@
         <button class="bet-opt-btn" data-bet="👑 소원 1회권">
           <i data-lucide="crown"></i> 소원권
         </button>
+      </div>
       </div>
 
       <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">2. 삼삼(3·3) 룰 적용 여부</div>
@@ -1022,6 +1030,14 @@
     let winningStones = [];
     let isGameOver = false;
     let selectedBet = "☕ 커피 쏘기";
+    let inviteFriendly = false; // 친목 오목(내기 없음) 여부
+    const inviteTitle = () => inviteFriendly ? '우리 즐겁게 오목 한판 어때요?' : '우리 내기 오목 한판 어때요?';
+    function applyInviteType(friendly) {
+      inviteFriendly = !!friendly;
+      document.getElementById('betName').textContent = inviteFriendly ? '친목 오목' : selectedBet;
+      const bs = document.getElementById('betSection');
+      if (bs) bs.style.display = inviteFriendly ? 'none' : '';
+    }
     let moveCount = 0;
     let rule33 = "black_only"; // "black_only": 흑 3·3 금수 적용, "free": 3·3 자유(일반 오목)
 
@@ -1034,6 +1050,7 @@
     const BET_LIST = ['☕ 커피 쏘기', '🍱 점심 쏘기', '🏃 빵/간식 셔틀', '👑 소원 1회권'];
     function readInvite(params) {
       let bet = null, rule = null;
+      const friendly = params.get('t') === '1';
       const b = params.get('b');
       if (b !== null && BET_LIST[Number(b)]) bet = BET_LIST[Number(b)];
       else if (params.get('bet')) bet = decodeURIComponent(params.get('bet'));
@@ -1041,7 +1058,7 @@
       if (r === '1') rule = 'black_only';
       else if (r === '0') rule = 'free';
       else if (params.get('rule')) rule = params.get('rule');
-      return { bet, rule };
+      return { bet, rule, friendly };
     }
     const normalizeRoomId = (id) => (id.indexOf('room_') === 0 ? id : 'room_' + id);
 
@@ -1812,10 +1829,10 @@
       if (!currentRoomId) {
         currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
       }
-      const challengeUrl = `${getBaseUrl()}?room=${currentRoomId.replace('room_', '')}&b=${Math.max(0, BET_LIST.indexOf(selectedBet))}&r=${rule33 === 'black_only' ? 1 : 0}`;
+      const challengeUrl = `${getBaseUrl()}?room=${currentRoomId.replace('room_', '')}&b=${Math.max(0, BET_LIST.indexOf(selectedBet))}&r=${rule33 === 'black_only' ? 1 : 0}${inviteFriendly ? '&t=1' : ''}`;
       if (roomLinkText) {
         const code = currentRoomId.replace('room_', '').toUpperCase();
-        roomLinkText.textContent = `⚔️ 내기 오목 한판 하실래요?  ${selectedBet} · 방 ${code}`;
+        roomLinkText.textContent = `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}  ${inviteFriendly ? '' : selectedBet + ' · '}방 ${code}`;
       }
       return challengeUrl;
     }
@@ -1834,8 +1851,17 @@
         document.querySelectorAll('.bet-options .bet-opt-btn').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         selectedBet = btn.getAttribute('data-bet');
-        document.getElementById('betName').textContent = selectedBet;
+        applyInviteType(inviteFriendly);
         updateCoupangAds(selectedBet);
+        updateChallengeLink();
+      });
+    });
+
+    document.querySelectorAll('[data-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-type]').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        applyInviteType(btn.getAttribute('data-type') === 'friendly');
         updateChallengeLink();
       });
     });
@@ -1857,8 +1883,8 @@
           Kakao.Share.sendDefault({
             objectType: 'feed',
             content: {
-              title: '⚔️ 내기 오목 한판 하실래요?',
-              description: `${selectedBet} 내기 한판!`,
+              title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`,
+              description: inviteFriendly ? '친구와 즐겁게 한판!' : `${selectedBet} 내기 한판!`,
               imageUrl: 'https://khslam72.github.io/omok/og.png',
               imageWidth: 800,
               imageHeight: 400,
@@ -1876,7 +1902,7 @@
       }
       // 키가 없거나 실패하면 → 폰 기본 공유창 (링크만 보내면 카톡이 미리보기 카드로 보여줍니다)
       if (navigator.share) {
-        navigator.share({ title: '⚔️ 내기 오목 한판 하실래요?', url: challengeUrl }).catch(() => {});
+        navigator.share({ title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`, url: challengeUrl }).catch(() => {});
       } else {
         navigator.clipboard.writeText(challengeUrl).then(() => showToast("초대 링크가 복사되었습니다. 카톡에 붙여넣어 보내세요!"));
       }
@@ -1884,12 +1910,12 @@
 
     document.getElementById('btnCopyLink').addEventListener('click', () => {
       const challengeUrl = updateChallengeLink();
-      const shareText = `[⚔️ 오목 도전장이 도착했습니다!]
-"나랑 [${selectedBet}] 내기 오목 한판 붙자!"
+      const shareText = `[${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}]
+${inviteFriendly ? '' : '"' + selectedBet + ' 내기!"\n'}
 설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
 
       if (navigator.share) {
-        navigator.share({ title: '⚔️ 내기 오목 한판 하실래요?', url: challengeUrl }).catch(() => {});
+        navigator.share({ title: `${inviteFriendly ? '🤝' : '⚔️'} ${inviteTitle()}`, url: challengeUrl }).catch(() => {});
       } else {
         navigator.clipboard.writeText(shareText).then(() => {
           showToast("도전장 링크가 복사되었습니다!");
@@ -1900,7 +1926,7 @@
 
     document.getElementById('btnShareThreads').addEventListener('click', () => {
       const challengeUrl = updateChallengeLink();
-      const text = `나랑 [${selectedBet}] 내기 오목 한판 붙을 사람? ⚔️
+      const text = `${inviteTitle()} ${inviteFriendly ? '🤝' : '⚔️'}
 설치 없이 링크로 1초 만에 바로 시작 👉 ${challengeUrl}`;
       const threadsUrl = `https://www.threads.net/intent/post?text=${encodeURIComponent(text)}`;
       window.open(threadsUrl, '_blank');
@@ -2197,6 +2223,7 @@
           updateCoupangAds(selectedBet);
         }
         if (invite.rule) { rule33 = invite.rule; setRule33(invite.rule, false); }
+        applyInviteType(invite.friendly);
         currentRoomId = roomParam;
         myRole = 2; // Guest
         document.getElementById('modeRole').textContent = "친구 대결 (백돌 - 도전자)";
@@ -2411,6 +2438,7 @@
     } else {
       setRule33(rule33, false);
     }
+    applyInviteType(invite0.friendly);
     updateCoupangAds(selectedBet);
 
     // Initial Start
