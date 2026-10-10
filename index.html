@@ -2376,7 +2376,7 @@ ${inviteFriendly ? '' : '"' + selectedBet + ' 내기!"\n'}
     // ----- 모드 전환 -----
     function setMode(mode, level) {
       if (dbRef) {
-        try { dbRef.off(); dbRef.child('presence').off(); if (myRole) dbRef.child('presence/' + myRole).remove(); } catch (e) {}
+        try { dbRef.off(); dbRef.child('presence').off(); firebase.database().ref('.info/connected').off(); if (myRole) dbRef.child('presence/' + myRole).remove(); } catch (e) {}
         dbRef = null;
       }
       clearTimeout(presenceTimer);
@@ -2465,20 +2465,32 @@ ${inviteFriendly ? '' : '"' + selectedBet + ' 내기!"\n'}
       const otherName = role === 1 ? '친구' : '방장';
       let everSeen = false;
 
+      // 이 기기를 구분하는 값 (새로고침해도 같은 자리를 되찾기 위함)
+      let cid = 'x' + Math.random().toString(36).slice(2, 10);
+      try {
+        cid = localStorage.getItem('omok_cid') || cid;
+        localStorage.setItem('omok_cid', cid);
+      } catch (e) {}
+      // 연결이 (다시) 될 때마다 내 접속 표시를 새로 건다 (카톡 앱으로 갔다 와도 복구됨)
+      const keepAlive = () => {
+        const mark = () => { mine.onDisconnect().remove(); mine.set({ t: Date.now(), c: cid }); };
+        firebase.database().ref('.info/connected').on('value', s => { if (s.val()) mark(); });
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && currentRoomId === roomId) mark(); });
+      };
+
       const claim = () => {
         if (role === 2) {
-          // 손님 자리는 한 명만: 이미 차 있으면 진행 중인 방
-          return mine.transaction(cur => cur ? undefined : { t: Date.now() }).then(res => {
+          // 손님 자리는 한 명만: 이미 다른 사람이 차지했으면 진행 중인 방
+          return mine.transaction(cur => (!cur || cur.c === cid) ? { t: Date.now(), c: cid } : undefined).then(res => {
             if (!res.committed) {
               showOfflineChoice('이미 다른 분과 진행 중인 대국이에요.', '새 방 만들기', newRoomFromInvite);
               return false;
             }
-            mine.onDisconnect().remove();
+            keepAlive();
             return true;
           });
         }
-        mine.set({ t: Date.now() });
-        mine.onDisconnect().remove();
+        keepAlive();
         return Promise.resolve(true);
       };
 
