@@ -4,6 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>한판붙자! 1:1 내기 오목</title>
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="한판붙자 오목">
+  <meta property="og:title" content="⚔️ 내기 오목 한판 하실래요?">
+  <meta property="og:description" content="설치 없이 바로 대결! 이긴 사람이 커피 쏘기 ☕">
+  <meta property="og:image" content="https://khslam72.github.io/omok/og.png">
+  <meta property="og:image:width" content="800">
+  <meta property="og:image:height" content="400">
+  <meta name="description" content="설치 없이 바로 대결! 친구와 내기 오목 한 판">
   
   <!-- Firebase SDK (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -1629,7 +1637,11 @@
         currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
       }
       const challengeUrl = `${getBaseUrl()}?room=${currentRoomId}&bet=${encodeURIComponent(selectedBet)}&rule=${rule33}`;
-      if (roomLinkText) roomLinkText.textContent = challengeUrl;
+      if (roomLinkText) {
+        const code = currentRoomId.replace('room_', '').toUpperCase();
+        const ruleDesc = rule33 === "black_only" ? "3·3 금수" : "3·3 자유";
+        roomLinkText.textContent = `⚔️ 내기 오목 한판 하실래요?  ${selectedBet} · ${ruleDesc} · 방 ${code}`;
+      }
       return challengeUrl;
     }
 
@@ -1662,18 +1674,25 @@
     document.getElementById('btnKakaoShare').addEventListener('click', () => {
       const challengeUrl = updateChallengeLink();
       const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
-      const text = `⚔️ 오목 도전장이 도착했습니다!\n"나랑 [${selectedBet}] 내기 오목 한판 붙자!" (${ruleDesc})`;
       const key = getKakaoKey();
 
       if (key && window.Kakao) {
         try {
           if (!Kakao.isInitialized()) Kakao.init(key);
-          // 카카오톡 친구/채팅방 선택 화면이 열립니다
+          // 카카오톡 친구/채팅방 선택 화면 → 긴 링크 없이 예쁜 카드 + [대전 시작하기] 버튼
           Kakao.Share.sendDefault({
-            objectType: 'text',
-            text: text,
-            link: { mobileWebUrl: challengeUrl, webUrl: challengeUrl },
-            buttonTitle: '도전 받기'
+            objectType: 'feed',
+            content: {
+              title: '⚔️ 내기 오목 한판 하실래요?',
+              description: `${selectedBet} 내기 · ${ruleDesc}`,
+              imageUrl: 'https://khslam72.github.io/omok/og.png',
+              imageWidth: 800,
+              imageHeight: 400,
+              link: { mobileWebUrl: challengeUrl, webUrl: challengeUrl }
+            },
+            buttons: [
+              { title: '⚔️ 대전 시작하기', link: { mobileWebUrl: challengeUrl, webUrl: challengeUrl } }
+            ]
           });
           return;
         } catch (err) {
@@ -1681,12 +1700,11 @@
           showToast("카카오 공유 오류: 키/등록 도메인을 확인하세요.");
         }
       }
-      // 키가 없거나 실패하면 → 폰 기본 공유창 (카카오톡 선택 → 친구 선택)
-      const shareText = `${text}\n설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
+      // 키가 없거나 실패하면 → 폰 기본 공유창 (링크만 보내면 카톡이 미리보기 카드로 보여줍니다)
       if (navigator.share) {
-        navigator.share({ title: '한판붙자 오목 도전장', text: shareText }).catch(() => {});
+        navigator.share({ title: '⚔️ 내기 오목 한판 하실래요?', url: challengeUrl }).catch(() => {});
       } else {
-        navigator.clipboard.writeText(shareText).then(() => showToast("도전장이 복사되었습니다. 카톡에 붙여넣어 보내세요!"));
+        navigator.clipboard.writeText(challengeUrl).then(() => showToast("초대 링크가 복사되었습니다. 카톡에 붙여넣어 보내세요!"));
       }
     });
 
@@ -1698,7 +1716,7 @@
 설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
 
       if (navigator.share) {
-        navigator.share({ title: '한판붙자 오목 도전장', text: shareText, url: challengeUrl }).catch(() => {});
+        navigator.share({ title: '⚔️ 내기 오목 한판 하실래요?', url: challengeUrl }).catch(() => {});
       } else {
         navigator.clipboard.writeText(shareText).then(() => {
           showToast("도전장 링크가 복사되었습니다!");
