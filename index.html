@@ -14,6 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js" crossorigin="anonymous"></script>
 
   <style>
     :root {
@@ -579,6 +580,9 @@
       <span>한판붙자</span> 오목
     </div>
     <div class="header-actions">
+      <button class="icon-btn" id="btnMode" title="대결 방식 변경">
+        <i data-lucide="users"></i>
+      </button>
       <button class="icon-btn" id="btnSound" title="소리 켜기/끄기">
         <i data-lucide="volume-2" id="soundIcon"></i>
       </button>
@@ -644,6 +648,27 @@
     <span class="coupang-notice">이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</span>
   </div>
 
+  <!-- Mode Select Modal -->
+  <div class="modal-overlay active" id="modalMode">
+    <div class="modal">
+      <div style="font-size: 2rem; margin-bottom: 4px;">⚔️</div>
+      <h2>한판붙자 오목</h2>
+      <p>대결 방식을 선택하세요</p>
+
+      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">🤖 인공지능과 대결 (내가 흑돌, 선공)</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+        <button class="bet-opt-btn" data-ai-level="easy">쉬움</button>
+        <button class="bet-opt-btn" data-ai-level="normal">보통</button>
+        <button class="bet-opt-btn" data-ai-level="hard">어려움</button>
+      </div>
+
+      <div style="font-size: 0.75rem; color: #94a3b8; text-align: left; margin-bottom: 6px; font-weight: 600;">👥 친구와 대결</div>
+      <button class="btn btn-primary" id="btnModeFriend" style="width: 100%;">
+        <i data-lucide="message-circle"></i> 카카오톡 친구 선택해서 대결
+      </button>
+    </div>
+  </div>
+
   <!-- Challenge Modal -->
   <div class="modal-overlay" id="modalChallenge">
     <div class="modal">
@@ -682,8 +707,11 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <button class="btn btn-primary" id="btnCopyLink">
-          <i data-lucide="message-circle"></i> 카카오톡 / 친구에게 공유
+        <button class="btn btn-primary" id="btnKakaoShare" style="background: #FEE500; color: #191919; border-color: #FEE500;">
+          <i data-lucide="message-circle"></i> 카카오톡 친구 선택해서 보내기
+        </button>
+        <button class="btn" id="btnCopyLink">
+          <i data-lucide="share-2"></i> 다른 앱으로 공유 / 링크 복사
         </button>
         <button class="btn" id="btnShareThreads" style="background: #000; border: 1px solid rgba(255,255,255,0.2); color: #fff;">
           <i data-lucide="at-sign"></i> 스레드(Threads)에 도전장 올리기
@@ -798,6 +826,11 @@
         <textarea class="firebase-settings-input" id="firebaseConfigInput" placeholder='{"apiKey": "...", "databaseURL": "..."}'></textarea>
       </div>
       
+      <div class="settings-group">
+        <label class="settings-label">카카오 JavaScript 키 (카톡 친구 선택 공유용)</label>
+        <input type="text" id="kakaoKeyInput" class="firebase-settings-input" style="height: 34px;" placeholder="카카오 디벨로퍼스 > 앱 키 > JavaScript 키">
+      </div>
+
       <div style="display: flex; flex-direction: column; gap: 8px;">
         <button class="btn btn-primary" id="btnSaveSettings">설정 저장</button>
         <button class="btn" id="btnCloseSettings">닫기</button>
@@ -932,6 +965,24 @@
     let selectedBet = "☕ 커피 쏘기";
     let moveCount = 0;
     let rule33 = "black_only"; // "black_only": 흑 3·3 금수 적용, "free": 3·3 자유(일반 오목)
+
+    // ----- 배포 주소 / 외부 키 설정 -----
+    const DEPLOY_URL = 'https://khslam72.github.io/omok/';   // 배포 주소 (file:// 등에서 열어도 링크가 깨지지 않게)
+    const KAKAO_JS_KEY = '';      // 카카오 JavaScript 키를 여기에 직접 넣으면 모든 접속자가 사용 가능
+    const FIREBASE_CONFIG = null; // 예: { apiKey: "...", databaseURL: "...", ... } 직접 넣으면 상대방도 바로 온라인 접속
+
+    function getBaseUrl() {
+      if (/^https?:$/.test(window.location.protocol)) {
+        return window.location.origin + window.location.pathname;
+      }
+      return DEPLOY_URL;
+    }
+
+    // Game mode: 'ai' | 'friend' | 'local'
+    let gameMode = 'local';
+    let aiLevel = 'normal';
+    let aiTimer = null;
+    let firebaseReady = false;
 
     // Online State
     let isOnlineMode = false;
@@ -1184,6 +1235,7 @@
       lastTapTime = now;
 
       if (isGameOver) return;
+      if (gameMode === 'ai' && currentTurn !== 1) return;
       if (isOnlineMode && myRole !== 0 && currentTurn !== myRole) {
         showToast("상대방 차례입니다! 기다려주세요.");
         return;
@@ -1288,6 +1340,105 @@
           currentTurn: currentTurn
         });
       }
+
+      if (gameMode === 'ai' && currentTurn === 2 && !isGameOver) {
+        scheduleAiMove();
+      }
+    }
+
+    // ----------------------------------------------------
+    // AI (외부 API 없이 브라우저 안에서 계산하는 패턴 평가 방식)
+    // ----------------------------------------------------
+    const AI_DIRS = [[0, 1], [1, 0], [1, 1], [1, -1]];
+
+    function lineScoreAt(r, c, p) {
+      // (r,c)에 p가 둔다고 가정했을 때 4방향 점수 합
+      let total = 0;
+      for (const [dr, dc] of AI_DIRS) {
+        let cnt = 1, open = 0;
+        for (const sign of [1, -1]) {
+          let nr = r + dr * sign, nc = c + dc * sign;
+          while (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === p) {
+            cnt++; nr += dr * sign; nc += dc * sign;
+          }
+          if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === 0) open++;
+        }
+        if (cnt >= 5) total += 100000;
+        else if (cnt === 4) total += open === 2 ? 10000 : (open === 1 ? 1000 : 0);
+        else if (cnt === 3) total += open === 2 ? 1000 : (open === 1 ? 100 : 0);
+        else if (cnt === 2) total += open === 2 ? 100 : (open === 1 ? 10 : 0);
+        else total += open === 2 ? 2 : 1;
+      }
+      return total;
+    }
+
+    function aiCandidates() {
+      const cand = [];
+      let any = false;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== 0) { any = true; continue; }
+          let near = false;
+          for (let dr = -2; dr <= 2 && !near; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] !== 0) { near = true; break; }
+            }
+          }
+          if (near) cand.push({ r, c });
+        }
+      }
+      if (!any) cand.push({ r: 7, c: 7 });
+      return cand;
+    }
+
+    function aiPickMove() {
+      const AI = 2, HUMAN = 1;
+      const defW = aiLevel === 'hard' ? 1.1 : (aiLevel === 'normal' ? 0.95 : 0.6);
+      const cand = aiCandidates();
+      const center = (BOARD_SIZE - 1) / 2;
+
+      let scored = cand.map(({ r, c }) => {
+        const atk = lineScoreAt(r, c, AI);
+        const def = lineScoreAt(r, c, HUMAN) * defW;
+        const dist = Math.abs(r - center) + Math.abs(c - center);
+        return { r, c, score: atk + def + (14 - dist) * 0.3 };
+      });
+      scored.sort((a, b) => b.score - a.score);
+
+      if (aiLevel === 'hard') {
+        // 상위 후보에 대해 "내가 둔 뒤 상대의 최선 응수"까지 한 수 더 내다본다
+        const top = scored.slice(0, 8);
+        for (const m of top) {
+          board[m.r][m.c] = AI;
+          let best = 0;
+          for (const o of aiCandidates()) {
+            const v = lineScoreAt(o.r, o.c, HUMAN);
+            if (v > best) best = v;
+          }
+          board[m.r][m.c] = 0;
+          m.score -= best * 0.5;
+        }
+        top.sort((a, b) => b.score - a.score);
+        return top[0];
+      }
+      if (aiLevel === 'easy') {
+        // 이기는 수/막아야 하는 수가 아니면 상위 몇 개 중 무작위
+        if (scored[0].score < 9000) {
+          const pool = scored.slice(0, Math.min(6, scored.length));
+          return pool[Math.floor(Math.random() * pool.length)];
+        }
+      }
+      return scored[0];
+    }
+
+    function scheduleAiMove() {
+      clearTimeout(aiTimer);
+      aiTimer = setTimeout(() => {
+        if (gameMode !== 'ai' || isGameOver || currentTurn !== 2) return;
+        const m = aiPickMove();
+        if (m) executeMove(m.r, m.c, 2);
+      }, 450);
     }
 
     function checkWin(r, c, player) {
@@ -1348,6 +1499,11 @@
         subStatusText.textContent = "빈 곳을 터치하여 돌을 놓으세요.";
       }
 
+      if (gameMode === 'ai') {
+        subStatusText.textContent = currentTurn === 1 ? "내 차례입니다! 착수하세요." : "AI가 생각 중입니다... 🤖";
+        turnText.textContent = currentTurn === 1 ? '내 차례 (흑돌)' : 'AI 차례 (백돌)';
+      }
+
       if (isOnlineMode && myRole !== 0) {
         if (currentTurn === myRole) {
           subStatusText.textContent = "내 차례입니다! 착수하세요.";
@@ -1358,6 +1514,7 @@
     }
 
     function resetGame() {
+      clearTimeout(aiTimer);
       board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
       currentTurn = 1;
       lastMove = null;
@@ -1398,7 +1555,9 @@
       const prize = document.getElementById('winnerBetPrize');
 
       const winnerName = player === 1 ? '흑돌' : '백돌';
-      title.textContent = `${winnerName} 승리! 🎉`;
+      title.textContent = gameMode === 'ai'
+        ? (player === 1 ? '🎉 당신의 승리!' : '🤖 AI 승리!')
+        : `${winnerName} 승리! 🎉`;
       turns.textContent = `총 ${moveCount}수 만에 승부를 결정지었습니다!`;
       prize.textContent = `${selectedBet} 획득 확정!`;
 
@@ -1426,10 +1585,10 @@
 
     document.getElementById('btnShareWinner').addEventListener('click', () => {
       const winnerName = currentTurn === 1 ? '흑돌' : '백돌';
-      const text = `[한판붙자! 오목 ⚔️]\n${winnerName}이(가) ${moveCount}수 만에 승리하여 [${selectedBet}]을(를) 쟁취했습니다!\n패배자의 복수전 대기 중... 바로 도전하기 👉 ${window.location.href}`;
+      const text = `[한판붙자! 오목 ⚔️]\n${winnerName}이(가) ${moveCount}수 만에 승리하여 [${selectedBet}]을(를) 쟁취했습니다!\n패배자의 복수전 대기 중... 바로 도전하기 👉 ${getBaseUrl()}`;
       
       if (navigator.share) {
-        navigator.share({ title: '오목 대결 결과', text: text, url: window.location.href }).catch(() => {});
+        navigator.share({ title: '오목 대결 결과', text: text, url: getBaseUrl() }).catch(() => {});
       } else {
         navigator.clipboard.writeText(text).then(() => {
           showToast("승리 멘트와 링크가 복사되었습니다!");
@@ -1493,7 +1652,7 @@
       if (!currentRoomId) {
         currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
       }
-      const challengeUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&bet=${encodeURIComponent(selectedBet)}&rule=${rule33}`;
+      const challengeUrl = `${getBaseUrl()}?room=${currentRoomId}&bet=${encodeURIComponent(selectedBet)}&rule=${rule33}`;
       if (roomLinkText) roomLinkText.textContent = challengeUrl;
       return challengeUrl;
     }
@@ -1501,6 +1660,7 @@
     const btnShareChallenge = document.getElementById('btnShareChallenge');
     if (btnShareChallenge) {
       btnShareChallenge.addEventListener('click', () => {
+        if (gameMode !== 'friend') setMode('friend');
         updateChallengeLink();
         modalChallenge.classList.add('active');
       });
@@ -1515,6 +1675,43 @@
         updateCoupangAds(selectedBet);
         updateChallengeLink();
       });
+    });
+
+    function getKakaoKey() {
+      let k = KAKAO_JS_KEY;
+      try { k = k || localStorage.getItem('omok_kakao_key') || ''; } catch (e) {}
+      return k.trim();
+    }
+
+    document.getElementById('btnKakaoShare').addEventListener('click', () => {
+      const challengeUrl = updateChallengeLink();
+      const ruleDesc = rule33 === "black_only" ? "3·3 금수 적용" : "3·3 자유 룰";
+      const text = `⚔️ 오목 도전장이 도착했습니다!\n"나랑 [${selectedBet}] 내기 오목 한판 붙자!" (${ruleDesc})`;
+      const key = getKakaoKey();
+
+      if (key && window.Kakao) {
+        try {
+          if (!Kakao.isInitialized()) Kakao.init(key);
+          // 카카오톡 친구/채팅방 선택 화면이 열립니다
+          Kakao.Share.sendDefault({
+            objectType: 'text',
+            text: text,
+            link: { mobileWebUrl: challengeUrl, webUrl: challengeUrl },
+            buttonTitle: '도전 받기'
+          });
+          return;
+        } catch (err) {
+          console.error(err);
+          showToast("카카오 공유 오류: 키/등록 도메인을 확인하세요.");
+        }
+      }
+      // 키가 없거나 실패하면 → 폰 기본 공유창 (카카오톡 선택 → 친구 선택)
+      const shareText = `${text}\n설치 없이 1초 만에 시작하기 👉 ${challengeUrl}`;
+      if (navigator.share) {
+        navigator.share({ title: '한판붙자 오목 도전장', text: shareText }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(shareText).then(() => showToast("도전장이 복사되었습니다. 카톡에 붙여넣어 보내세요!"));
+      }
     });
 
     document.getElementById('btnCopyLink').addEventListener('click', () => {
@@ -1596,7 +1793,7 @@
       // Record locally as well
       const stats = getLocalStats();
       // If Firebase connected, atomically increment global stats
-      if (isOnlineMode && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+      if (firebaseReady && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
         try {
           const statsRef = firebase.database().ref('omok_global_stats');
           statsRef.child('totalGames').transaction(curr => (curr || 0) + 1);
@@ -1616,7 +1813,7 @@
     function recordGlobalGameWin(winner, bet) {
       recordLocalGame(winner);
 
-      if (isOnlineMode && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+      if (firebaseReady && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
         try {
           const statsRef = firebase.database().ref('omok_global_stats');
           statsRef.child('finishedGames').transaction(curr => (curr || 0) + 1);
@@ -1636,7 +1833,7 @@
     }
 
     function listenGlobalStats() {
-      if (isOnlineMode && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
+      if (firebaseReady && typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) {
         try {
           const statsRef = firebase.database().ref('omok_global_stats');
           statsRef.on('value', snapshot => {
@@ -1757,11 +1954,19 @@
       if (coupangWinnerLink) coupangWinnerLink.href = targetUrl;
     }
 
-    const savedConfig = localStorage.getItem('omok_firebase_config');
-    if (savedConfig) {
-      firebaseInput.value = savedConfig;
-      initFirebase(JSON.parse(savedConfig));
-    }
+    const kakaoKeyInput = document.getElementById('kakaoKeyInput');
+    try { kakaoKeyInput.value = localStorage.getItem('omok_kakao_key') || ''; } catch (e) {}
+
+    let savedConfig = null;
+    try { savedConfig = localStorage.getItem('omok_firebase_config'); } catch (e) {}
+    try {
+      if (FIREBASE_CONFIG) {
+        initFirebase(FIREBASE_CONFIG);
+      } else if (savedConfig) {
+        firebaseInput.value = savedConfig;
+        initFirebase(JSON.parse(savedConfig));
+      }
+    } catch (e) { console.error('Firebase init error', e); }
 
     btnSettings.addEventListener('click', () => {
       modalSettings.classList.add('active');
@@ -1785,6 +1990,8 @@
 
       updateCoupangAds(selectedBet);
 
+      try { localStorage.setItem('omok_kakao_key', kakaoKeyInput.value.trim()); } catch (e) {}
+
       if (firebaseInput.value.trim()) {
         try {
           const config = JSON.parse(firebaseInput.value);
@@ -1802,39 +2009,83 @@
     });
 
     function initFirebase(config) {
+      if (typeof firebase === 'undefined') return;
       if (!firebase.apps.length) {
         firebase.initializeApp(config);
       }
+      firebaseReady = true;
+    }
+
+    // 친구 대결 시작: roomParam이 있으면 도전자(백돌), 없으면 방장(흑돌)
+    function startOnlineRoom(roomParam) {
+      if (!firebaseReady) return false;
       isOnlineMode = true;
 
       const params = new URLSearchParams(window.location.search);
-      const roomParam = params.get('room');
       const betParam = params.get('bet');
       const ruleParam = params.get('rule');
 
-      if (betParam) {
-        selectedBet = decodeURIComponent(betParam);
-        document.getElementById('betName').textContent = selectedBet;
-        updateCoupangAds(selectedBet);
-      }
-
-      if (ruleParam) {
-        rule33 = ruleParam;
-        setRule33(ruleParam, false);
-      }
-
       if (roomParam) {
+        if (betParam) {
+          selectedBet = decodeURIComponent(betParam);
+          document.getElementById('betName').textContent = selectedBet;
+          updateCoupangAds(selectedBet);
+        }
+        if (ruleParam) { rule33 = ruleParam; setRule33(ruleParam, false); }
         currentRoomId = roomParam;
         myRole = 2; // Guest
-        document.getElementById('modeRole').textContent = "온라인 1:1 (백돌 - 도전자)";
-        connectToRoom(currentRoomId);
+        document.getElementById('modeRole').textContent = "친구 대결 (백돌 - 도전자)";
       } else {
         currentRoomId = 'room_' + Math.random().toString(36).substring(2, 8);
         myRole = 1; // Host
-        document.getElementById('modeRole').textContent = "온라인 1:1 (흑돌 - 방장)";
-        connectToRoom(currentRoomId);
+        document.getElementById('modeRole').textContent = "친구 대결 (흑돌 - 방장)";
       }
+      connectToRoom(currentRoomId);
+      updateUI();
+      return true;
     }
+
+    // ----- 모드 전환 -----
+    function setMode(mode, level) {
+      if (dbRef) { try { dbRef.off(); } catch (e) {} dbRef = null; }
+      isOnlineMode = false;
+      myRole = 0;
+      currentRoomId = null;
+      gameMode = mode;
+      resetGame();
+
+      if (mode === 'ai') {
+        aiLevel = level || aiLevel;
+        const names = { easy: '쉬움', normal: '보통', hard: '어려움' };
+        document.getElementById('modeRole').textContent = `AI 대결 · ${names[aiLevel]} (나: 흑돌)`;
+      } else if (mode === 'friend') {
+        if (!startOnlineRoom(null)) {
+          document.getElementById('modeRole').textContent = "친구 대결 (온라인 서버 미설정)";
+        }
+      }
+      updateUI();
+    }
+
+    document.querySelectorAll('[data-ai-level]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setMode('ai', btn.getAttribute('data-ai-level'));
+        document.getElementById('modalMode').classList.remove('active');
+      });
+    });
+
+    document.getElementById('btnModeFriend').addEventListener('click', () => {
+      setMode('friend');
+      document.getElementById('modalMode').classList.remove('active');
+      updateChallengeLink();
+      if (!firebaseReady) {
+        showToast("온라인 서버(Firebase)가 아직 설정되지 않아 링크로 접속해도 연결되지 않습니다.");
+      }
+      modalChallenge.classList.add('active');
+    });
+
+    document.getElementById('btnMode').addEventListener('click', () => {
+      document.getElementById('modalMode').classList.add('active');
+    });
 
     function connectToRoom(roomId) {
       dbRef = firebase.database().ref('omok_rooms/' + roomId);
@@ -1899,6 +2150,16 @@
     updateCoupangAds(selectedBet);
 
     // Initial Start
+    const roomFromUrl = urlParams.get('room');
+    if (roomFromUrl) {
+      // 친구 도전장 링크로 들어온 경우: 모드 선택 없이 바로 도전자로 입장
+      gameMode = 'friend';
+      document.getElementById('modalMode').classList.remove('active');
+      if (!startOnlineRoom(roomFromUrl)) {
+        document.getElementById('modeRole').textContent = "친구 대결 (온라인 서버 미설정)";
+        setTimeout(() => showToast("온라인 서버가 아직 준비되지 않았습니다."), 400);
+      }
+    }
     renderLocalStats();
     listenGlobalStats();
     resizeCanvas();
