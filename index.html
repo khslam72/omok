@@ -273,8 +273,8 @@
 
     .board-container {
       position: relative;
-      width: 125%;
-      min-width: 125%;
+      width: 140%;
+      min-width: 140%;
       aspect-ratio: 1 / 1; /* 100% Perfect Square! */
       background: var(--board-bg);
       padding: 6px;
@@ -955,7 +955,7 @@
     // ----------------------------------------------------
     // Game Core State
     // ----------------------------------------------------
-    const BOARD_SIZE = 15;
+    const BOARD_SIZE = 19;
     let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
     let currentTurn = 1; // 1: Black, 2: White
     let lastMove = null;
@@ -1106,7 +1106,7 @@
       }
 
       // Star Points
-      const starPoints = [3, 7, 11];
+      const starPoints = [3, 9, 15];
       ctx.fillStyle = '#6b4423';
       for (let r of starPoints) {
         for (let c of starPoints) {
@@ -1364,7 +1364,7 @@
           if (near) cand.push({ r, c });
         }
       }
-      if (!any) cand.push({ r: 7, c: 7 });
+      if (!any) cand.push({ r: (BOARD_SIZE - 1) / 2, c: (BOARD_SIZE - 1) / 2 });
       return cand;
     }
 
@@ -1378,7 +1378,7 @@
         const atk = lineScoreAt(r, c, AI);
         const def = lineScoreAt(r, c, HUMAN) * defW;
         const dist = Math.abs(r - center) + Math.abs(c - center);
-        return { r, c, score: atk + def + (14 - dist) * 0.3 };
+        return { r, c, score: atk + def + (BOARD_SIZE - 1 - dist) * 0.3 };
       });
       scored.sort((a, b) => b.score - a.score);
 
