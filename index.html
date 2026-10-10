@@ -1071,7 +1071,8 @@
     const normalizeRoomId = (id) => (id.indexOf('room_') === 0 ? id : 'room_' + id);
 
     function getBaseUrl() {
-      if (/^https?:$/.test(window.location.protocol)) {
+      // 초대 링크는 항상 정식 배포 주소로 만든다 (임시 미리보기 주소로 보내면 카톡 카드가 열리지 않음)
+      if (/^https?:$/.test(window.location.protocol) && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
         return window.location.origin + window.location.pathname;
       }
       return DEPLOY_URL;
